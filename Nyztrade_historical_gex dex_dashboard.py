@@ -188,7 +188,7 @@ class DhanConfig:
     "FINNIFTY": 27, 
     "MIDCPNIFTY": 442,
     "SENSEX": 51
-}
+
 
 SYMBOL_CONFIG = {
     "NIFTY": {"contract_size": 25, "strike_interval": 50},

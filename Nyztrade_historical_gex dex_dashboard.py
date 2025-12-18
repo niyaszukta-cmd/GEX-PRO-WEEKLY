@@ -1,6 +1,6 @@
 # ============================================================================
 # NYZTrade Historical GEX/DEX Dashboard
-# Historical Options Greeks Analysis with Indian Standard Time
+# Historical Options Greeks Analysis with Indian Standard Time.
 # ============================================================================
 
 import streamlit as st

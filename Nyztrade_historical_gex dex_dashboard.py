@@ -3,33 +3,6 @@
 # Historical Options Greeks Analysis with Indian Standard Time
 # ============================================================================
 
-import subprocess
-import sys
-
-# Auto-install required packages
-def install_packages():
-    """Install required packages if not already installed"""
-    required = {
-        'streamlit': 'streamlit',
-        'pandas': 'pandas',
-        'numpy': 'numpy',
-        'plotly': 'plotly',
-        'scipy': 'scipy',
-        'requests': 'requests',
-        'pytz': 'pytz'
-    }
-    
-    for package, pip_name in required.items():
-        try:
-            __import__(package)
-        except ImportError:
-            print(f"Installing {package}...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", pip_name, "-q"])
-
-# Install packages first
-install_packages()
-
-# Now import everything
 import streamlit as st
 import pandas as pd
 import numpy as np

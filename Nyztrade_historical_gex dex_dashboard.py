@@ -183,8 +183,13 @@ st.markdown("""
 class DhanConfig:
     client_id: str = "1100480354"
     access_token: str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY2MDU1NDA2LCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2NTk2OTAwNiwidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.ehq9obDqz9DtUyttf5UBriJqnNMUMsCCLfJ9EJy-oXz3vQAMrbw9w_g83RCtOuHW_7JHA5uIpqIQ4UNbJIB46w"
+
 DHAN_SECURITY_IDS = {
-    "NIFTY": 13, "BANKNIFTY": 25, "FINNIFTY": 27, "MIDCPNIFTY": 442
+    "NIFTY": 13, 
+    "BANKNIFTY": 25, 
+    "FINNIFTY": 27, 
+    "MIDCPNIFTY": 442,
+    "SENSEX": 51
 }
 
 SYMBOL_CONFIG = {
@@ -192,6 +197,7 @@ SYMBOL_CONFIG = {
     "BANKNIFTY": {"contract_size": 15, "strike_interval": 100},
     "FINNIFTY": {"contract_size": 40, "strike_interval": 50},
     "MIDCPNIFTY": {"contract_size": 75, "strike_interval": 25},
+    "SENSEX": {"contract_size": 10, "strike_interval": 100},
 }
 
 # Indian timezone
@@ -207,6 +213,13 @@ class BlackScholesCalculator:
         if T <= 0 or sigma <= 0:
             return 0
         return (np.log(S/K) + (r + 0.5*sigma**2)*T) / (sigma * np.sqrt(T))
+    
+    @staticmethod
+    def calculate_d2(S, K, T, r, sigma):
+        if T <= 0 or sigma <= 0:
+            return 0
+        d1 = BlackScholesCalculator.calculate_d1(S, K, T, r, sigma)
+        return d1 - sigma * np.sqrt(T)
     
     @staticmethod
     def calculate_gamma(S, K, T, r, sigma):
@@ -235,6 +248,45 @@ class BlackScholesCalculator:
         try:
             d1 = BlackScholesCalculator.calculate_d1(S, K, T, r, sigma)
             return norm.cdf(d1) - 1
+        except:
+            return 0
+    
+    @staticmethod
+    def calculate_vanna(S, K, T, r, sigma):
+        """
+        Vanna = dDelta/dVol = dVega/dSpot
+        Measures sensitivity of delta to changes in volatility
+        Positive vanna = Delta increases with vol increase
+        """
+        if T <= 0 or sigma <= 0 or S <= 0 or K <= 0:
+            return 0
+        try:
+            d1 = BlackScholesCalculator.calculate_d1(S, K, T, r, sigma)
+            d2 = BlackScholesCalculator.calculate_d2(S, K, T, r, sigma)
+            vanna = -norm.pdf(d1) * d2 / sigma
+            return vanna
+        except:
+            return 0
+    
+    @staticmethod
+    def calculate_charm(S, K, T, r, sigma, option_type='call'):
+        """
+        Charm = -dDelta/dTime (also called Delta Decay)
+        Measures rate of change of delta over time
+        Important for understanding how positions evolve as expiry approaches
+        """
+        if T <= 0 or sigma <= 0 or S <= 0 or K <= 0:
+            return 0
+        try:
+            d1 = BlackScholesCalculator.calculate_d1(S, K, T, r, sigma)
+            d2 = BlackScholesCalculator.calculate_d2(S, K, T, r, sigma)
+            
+            if option_type.lower() == 'call':
+                charm = -norm.pdf(d1) * (2*r*T - d2*sigma*np.sqrt(T)) / (2*T*sigma*np.sqrt(T))
+            else:  # put
+                charm = -norm.pdf(d1) * (2*r*T - d2*sigma*np.sqrt(T)) / (2*T*sigma*np.sqrt(T))
+            
+            return charm
         except:
             return 0
 
@@ -366,16 +418,31 @@ class DhanHistoricalFetcher:
                     call_iv_dec = call_iv / 100 if call_iv > 1 else call_iv
                     put_iv_dec = put_iv / 100 if put_iv > 1 else put_iv
                     
+                    # First-order Greeks
                     call_gamma = self.bs_calc.calculate_gamma(spot_price, strike_price, time_to_expiry, self.risk_free_rate, call_iv_dec)
                     put_gamma = self.bs_calc.calculate_gamma(spot_price, strike_price, time_to_expiry, self.risk_free_rate, put_iv_dec)
                     call_delta = self.bs_calc.calculate_call_delta(spot_price, strike_price, time_to_expiry, self.risk_free_rate, call_iv_dec)
                     put_delta = self.bs_calc.calculate_put_delta(spot_price, strike_price, time_to_expiry, self.risk_free_rate, put_iv_dec)
                     
-                    # Calculate GEX and DEX
+                    # Second-order Greeks (VANNA and CHARM)
+                    call_vanna = self.bs_calc.calculate_vanna(spot_price, strike_price, time_to_expiry, self.risk_free_rate, call_iv_dec)
+                    put_vanna = self.bs_calc.calculate_vanna(spot_price, strike_price, time_to_expiry, self.risk_free_rate, put_iv_dec)
+                    call_charm = self.bs_calc.calculate_charm(spot_price, strike_price, time_to_expiry, self.risk_free_rate, call_iv_dec, 'call')
+                    put_charm = self.bs_calc.calculate_charm(spot_price, strike_price, time_to_expiry, self.risk_free_rate, put_iv_dec, 'put')
+                    
+                    # Calculate exposures (GEX, DEX, VANNA-X, CHARM-X)
                     call_gex = (call_oi * call_gamma * spot_price**2 * contract_size) / 1e9
                     put_gex = -(put_oi * put_gamma * spot_price**2 * contract_size) / 1e9
                     call_dex = (call_oi * call_delta * spot_price * contract_size) / 1e9
                     put_dex = (put_oi * put_delta * spot_price * contract_size) / 1e9
+                    
+                    # VANNA Exposure (sensitivity to vol changes)
+                    call_vanna_exp = (call_oi * call_vanna * spot_price * contract_size) / 1e9
+                    put_vanna_exp = (put_oi * put_vanna * spot_price * contract_size) / 1e9
+                    
+                    # CHARM Exposure (delta decay over time)
+                    call_charm_exp = (call_oi * call_charm * spot_price * contract_size) / 1e9
+                    put_charm_exp = (put_oi * put_charm * spot_price * contract_size) / 1e9
                     
                     all_data.append({
                         'timestamp': dt_ist,
@@ -396,6 +463,12 @@ class DhanHistoricalFetcher:
                         'call_dex': call_dex,
                         'put_dex': put_dex,
                         'net_dex': call_dex + put_dex,
+                        'call_vanna': call_vanna_exp,
+                        'put_vanna': put_vanna_exp,
+                        'net_vanna': call_vanna_exp + put_vanna_exp,
+                        'call_charm': call_charm_exp,
+                        'put_charm': put_charm_exp,
+                        'net_charm': call_charm_exp + put_charm_exp,
                     })
                     
                 except Exception as e:
@@ -412,13 +485,19 @@ class DhanHistoricalFetcher:
         # Sort by timestamp for flow calculations
         df = df.sort_values(['strike', 'timestamp']).reset_index(drop=True)
         
-        # Calculate GEX Flow and DEX Flow (change from previous timestamp)
+        # Calculate GEX Flow, DEX Flow, VANNA Flow, and CHARM Flow (change from previous timestamp)
         df['call_gex_flow'] = 0.0
         df['put_gex_flow'] = 0.0
         df['net_gex_flow'] = 0.0
         df['call_dex_flow'] = 0.0
         df['put_dex_flow'] = 0.0
         df['net_dex_flow'] = 0.0
+        df['call_vanna_flow'] = 0.0
+        df['put_vanna_flow'] = 0.0
+        df['net_vanna_flow'] = 0.0
+        df['call_charm_flow'] = 0.0
+        df['put_charm_flow'] = 0.0
+        df['net_charm_flow'] = 0.0
         
         for strike in df['strike'].unique():
             strike_mask = df['strike'] == strike
@@ -432,6 +511,12 @@ class DhanHistoricalFetcher:
                 df.loc[strike_mask, 'call_dex_flow'] = strike_data['call_dex'].diff().fillna(0)
                 df.loc[strike_mask, 'put_dex_flow'] = strike_data['put_dex'].diff().fillna(0)
                 df.loc[strike_mask, 'net_dex_flow'] = strike_data['net_dex'].diff().fillna(0)
+                df.loc[strike_mask, 'call_vanna_flow'] = strike_data['call_vanna'].diff().fillna(0)
+                df.loc[strike_mask, 'put_vanna_flow'] = strike_data['put_vanna'].diff().fillna(0)
+                df.loc[strike_mask, 'net_vanna_flow'] = strike_data['net_vanna'].diff().fillna(0)
+                df.loc[strike_mask, 'call_charm_flow'] = strike_data['call_charm'].diff().fillna(0)
+                df.loc[strike_mask, 'put_charm_flow'] = strike_data['put_charm'].diff().fillna(0)
+                df.loc[strike_mask, 'net_charm_flow'] = strike_data['net_charm'].diff().fillna(0)
         
         # Calculate hedging pressure
         max_gex = df['net_gex'].abs().max()
@@ -957,6 +1042,206 @@ def create_oi_distribution(df: pd.DataFrame, spot_price: float) -> go.Figure:
     
     return fig
 
+def create_vanna_exposure_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
+    """Create VANNA Exposure chart (sensitivity to volatility changes)"""
+    df_sorted = df.sort_values('strike').reset_index(drop=True)
+    
+    # Colors based on net vanna
+    colors_call = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['call_vanna']]
+    colors_put = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['put_vanna']]
+    
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=("📈 Call VANNA", "📉 Put VANNA"),
+        horizontal_spacing=0.12
+    )
+    
+    # Call VANNA
+    fig.add_trace(go.Bar(
+        y=df_sorted['strike'],
+        x=df_sorted['call_vanna'],
+        orientation='h',
+        marker=dict(color=colors_call),
+        name='Call VANNA',
+        hovertemplate='Strike: %{y:,.0f}<br>Call VANNA: %{x:.4f}B<extra></extra>'
+    ), row=1, col=1)
+    
+    # Put VANNA
+    fig.add_trace(go.Bar(
+        y=df_sorted['strike'],
+        x=df_sorted['put_vanna'],
+        orientation='h',
+        marker=dict(color=colors_put),
+        name='Put VANNA',
+        hovertemplate='Strike: %{y:,.0f}<br>Put VANNA: %{x:.4f}B<extra></extra>'
+    ), row=1, col=2)
+    
+    # Add spot price lines
+    for col in [1, 2]:
+        fig.add_hline(y=spot_price, line_dash="dash", line_color="#06b6d4", line_width=2,
+                      annotation_text=f"Spot: {spot_price:,.2f}", annotation_position="top right",
+                      annotation=dict(font=dict(size=10, color="white")), row=1, col=col)
+    
+    fig.update_layout(
+        title=dict(text="<b>🌊 VANNA Exposure (dDelta/dVol)</b>", font=dict(size=18, color='white')),
+        template="plotly_dark",
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(26,35,50,0.8)',
+        height=600,
+        showlegend=False,
+        hovermode='closest',
+        margin=dict(l=80, r=80, t=100, b=80)
+    )
+    
+    fig.update_xaxes(title_text="VANNA (₹ Billions)", gridcolor='rgba(128,128,128,0.2)', showgrid=True)
+    fig.update_yaxes(title_text="Strike Price", gridcolor='rgba(128,128,128,0.2)', showgrid=True)
+    
+    return fig
+
+def create_charm_exposure_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
+    """Create CHARM Exposure chart (delta decay over time)"""
+    df_sorted = df.sort_values('strike').reset_index(drop=True)
+    
+    # Colors based on net charm
+    colors_call = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['call_charm']]
+    colors_put = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['put_charm']]
+    
+    fig = make_subplots(
+        rows=1, cols=2,
+        subplot_titles=("📈 Call CHARM", "📉 Put CHARM"),
+        horizontal_spacing=0.12
+    )
+    
+    # Call CHARM
+    fig.add_trace(go.Bar(
+        y=df_sorted['strike'],
+        x=df_sorted['call_charm'],
+        orientation='h',
+        marker=dict(color=colors_call),
+        name='Call CHARM',
+        hovertemplate='Strike: %{y:,.0f}<br>Call CHARM: %{x:.4f}B<extra></extra>'
+    ), row=1, col=1)
+    
+    # Put CHARM
+    fig.add_trace(go.Bar(
+        y=df_sorted['strike'],
+        x=df_sorted['put_charm'],
+        orientation='h',
+        marker=dict(color=colors_put),
+        name='Put CHARM',
+        hovertemplate='Strike: %{y:,.0f}<br>Put CHARM: %{x:.4f}B<extra></extra>'
+    ), row=1, col=2)
+    
+    # Add spot price lines
+    for col in [1, 2]:
+        fig.add_hline(y=spot_price, line_dash="dash", line_color="#06b6d4", line_width=2,
+                      annotation_text=f"Spot: {spot_price:,.2f}", annotation_position="top right",
+                      annotation=dict(font=dict(size=10, color="white")), row=1, col=col)
+    
+    fig.update_layout(
+        title=dict(text="<b>⏰ CHARM Exposure (Delta Decay)</b>", font=dict(size=18, color='white')),
+        template="plotly_dark",
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(26,35,50,0.8)',
+        height=600,
+        showlegend=False,
+        hovermode='closest',
+        margin=dict(l=80, r=80, t=100, b=80)
+    )
+    
+    fig.update_xaxes(title_text="CHARM (₹ Billions)", gridcolor='rgba(128,128,128,0.2)', showgrid=True)
+    fig.update_yaxes(title_text="Strike Price", gridcolor='rgba(128,128,128,0.2)', showgrid=True)
+    
+    return fig
+
+def create_vanna_flow_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
+    """Create VANNA Flow analysis chart"""
+    df_sorted = df.sort_values('strike').reset_index(drop=True)
+    
+    colors = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['net_vanna_flow']]
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        y=df_sorted['strike'],
+        x=df_sorted['net_vanna_flow'],
+        orientation='h',
+        marker=dict(color=colors),
+        name='Net VANNA Flow',
+        hovertemplate='Strike: %{y:,.0f}<br>Net VANNA Flow: %{x:.4f}B<extra></extra>'
+    ))
+    
+    fig.add_hline(y=spot_price, line_dash="dash", line_color="#06b6d4", line_width=3,
+                  annotation_text=f"Spot: {spot_price:,.2f}", annotation_position="top right",
+                  annotation=dict(font=dict(size=12, color="white")))
+    
+    # Calculate flow metrics
+    total_vanna_inflow = df_sorted[df_sorted['net_vanna_flow'] > 0]['net_vanna_flow'].sum()
+    total_vanna_outflow = df_sorted[df_sorted['net_vanna_flow'] < 0]['net_vanna_flow'].sum()
+    net_vanna_flow = total_vanna_inflow + total_vanna_outflow
+    
+    fig.update_layout(
+        title=dict(text=f"<b>🌊 VANNA Flow Analysis</b><br><sub>Inflow: {total_vanna_inflow:.2f}B | Outflow: {total_vanna_outflow:.2f}B | Net: {net_vanna_flow:.2f}B</sub>",
+                   font=dict(size=18, color='white')),
+        xaxis_title="VANNA Flow (₹ Billions)",
+        yaxis_title="Strike Price",
+        template="plotly_dark",
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(26,35,50,0.8)',
+        height=700,
+        showlegend=False,
+        hovermode='closest',
+        xaxis=dict(gridcolor='rgba(128,128,128,0.2)', showgrid=True),
+        yaxis=dict(gridcolor='rgba(128,128,128,0.2)', showgrid=True),
+        margin=dict(l=80, r=80, t=100, b=80)
+    )
+    
+    return fig
+
+def create_charm_flow_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
+    """Create CHARM Flow analysis chart"""
+    df_sorted = df.sort_values('strike').reset_index(drop=True)
+    
+    colors = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['net_charm_flow']]
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        y=df_sorted['strike'],
+        x=df_sorted['net_charm_flow'],
+        orientation='h',
+        marker=dict(color=colors),
+        name='Net CHARM Flow',
+        hovertemplate='Strike: %{y:,.0f}<br>Net CHARM Flow: %{x:.4f}B<extra></extra>'
+    ))
+    
+    fig.add_hline(y=spot_price, line_dash="dash", line_color="#06b6d4", line_width=3,
+                  annotation_text=f"Spot: {spot_price:,.2f}", annotation_position="top right",
+                  annotation=dict(font=dict(size=12, color="white")))
+    
+    # Calculate flow metrics
+    total_charm_inflow = df_sorted[df_sorted['net_charm_flow'] > 0]['net_charm_flow'].sum()
+    total_charm_outflow = df_sorted[df_sorted['net_charm_flow'] < 0]['net_charm_flow'].sum()
+    net_charm_flow = total_charm_inflow + total_charm_outflow
+    
+    fig.update_layout(
+        title=dict(text=f"<b>⏰ CHARM Flow Analysis</b><br><sub>Inflow: {total_charm_inflow:.2f}B | Outflow: {total_charm_outflow:.2f}B | Net: {net_charm_flow:.2f}B</sub>",
+                   font=dict(size=18, color='white')),
+        xaxis_title="CHARM Flow (₹ Billions)",
+        yaxis_title="Strike Price",
+        template="plotly_dark",
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(26,35,50,0.8)',
+        height=700,
+        showlegend=False,
+        hovermode='closest',
+        xaxis=dict(gridcolor='rgba(128,128,128,0.2)', showgrid=True),
+        yaxis=dict(gridcolor='rgba(128,128,128,0.2)', showgrid=True),
+        margin=dict(l=80, r=80, t=100, b=80)
+    )
+    
+    return fig
+
 # ============================================================================
 # MAIN APPLICATION
 # ============================================================================
@@ -1444,7 +1729,7 @@ def main():
         st.markdown("---")
         
         # Tabs for separate charts
-        tabs = st.tabs(["🎯 GEX", "📊 DEX", "⚡ NET GEX+DEX", "🎪 Hedge Pressure", "🌊 GEX Flow", "🌊 DEX Flow", "💫 Net Flow", "📈 Intraday Timeline", "📋 OI & Data"])
+        tabs = st.tabs(["🎯 GEX", "📊 DEX", "⚡ NET GEX+DEX", "🎪 Hedge Pressure", "🌊 GEX Flow", "🌊 DEX Flow", "💫 Net Flow", "🌊 VANNA", "⏰ CHARM", "🌊 VANNA Flow", "⏰ CHARM Flow", "📈 Intraday Timeline", "📋 OI & Data"])
         
         with tabs[0]:
             st.markdown("### 🎯 Gamma Exposure (GEX) Analysis")
@@ -1637,7 +1922,94 @@ def main():
             4. **GEX Outflow + Bearish DEX** → Sharp downside risk, buy puts or stay flat
             """)
         
+        # Tab 8: VANNA Exposure
         with tabs[7]:
+            st.markdown("### 🌊 VANNA Exposure (Sensitivity to Volatility)")
+            st.plotly_chart(create_vanna_exposure_chart(df_latest, spot_price), use_container_width=True)
+            
+            # VANNA metrics
+            total_call_vanna = df_latest['call_vanna'].sum()
+            total_put_vanna = df_latest['put_vanna'].sum()
+            net_vanna = df_latest['net_vanna'].sum()
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Call VANNA", f"{total_call_vanna:.4f}B")
+            with col2:
+                st.metric("Put VANNA", f"{total_put_vanna:.4f}B")
+            with col3:
+                st.metric("Net VANNA", f"{net_vanna:.4f}B")
+            
+            st.markdown("""
+            **Understanding VANNA:**
+            - **Positive VANNA**: Delta increases when IV rises
+            - **Negative VANNA**: Delta decreases when IV rises  
+            - **Large VANNA**: High sensitivity to volatility changes
+            """)
+        
+        # Tab 9: CHARM Exposure
+        with tabs[8]:
+            st.markdown("### ⏰ CHARM Exposure (Delta Decay)")
+            st.plotly_chart(create_charm_exposure_chart(df_latest, spot_price), use_container_width=True)
+            
+            # CHARM metrics
+            total_call_charm = df_latest['call_charm'].sum()
+            total_put_charm = df_latest['put_charm'].sum()
+            net_charm = df_latest['net_charm'].sum()
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Call CHARM", f"{total_call_charm:.4f}B")
+            with col2:
+                st.metric("Put CHARM", f"{total_put_charm:.4f}B")
+            with col3:
+                st.metric("Net CHARM", f"{net_charm:.4f}B")
+            
+            st.markdown("""
+            **Understanding CHARM:**
+            - **Measures**: Rate of delta decay over time
+            - **High CHARM**: Delta changes rapidly near expiry
+            - **ATM Options**: Highest charm values
+            """)
+        
+        # Tab 10: VANNA Flow
+        with tabs[9]:
+            st.markdown("### 🌊 VANNA Flow Analysis")
+            st.plotly_chart(create_vanna_flow_chart(df_latest, spot_price), use_container_width=True)
+            
+            # VANNA flow metrics
+            total_vanna_inflow = df_latest[df_latest['net_vanna_flow'] > 0]['net_vanna_flow'].sum()
+            total_vanna_outflow = df_latest[df_latest['net_vanna_flow'] < 0]['net_vanna_flow'].sum()
+            net_vanna_flow = df_latest['net_vanna_flow'].sum()
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("VANNA Inflow", f"{total_vanna_inflow:.4f}B")
+            with col2:
+                st.metric("VANNA Outflow", f"{total_vanna_outflow:.4f}B")
+            with col3:
+                st.metric("Net VANNA Flow", f"{net_vanna_flow:.4f}B")
+        
+        # Tab 11: CHARM Flow
+        with tabs[10]:
+            st.markdown("### ⏰ CHARM Flow Analysis")
+            st.plotly_chart(create_charm_flow_chart(df_latest, spot_price), use_container_width=True)
+            
+            # CHARM flow metrics
+            total_charm_inflow = df_latest[df_latest['net_charm_flow'] > 0]['net_charm_flow'].sum()
+            total_charm_outflow = df_latest[df_latest['net_charm_flow'] < 0]['net_charm_flow'].sum()
+            net_charm_flow = df_latest['net_charm_flow'].sum()
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("CHARM Inflow", f"{total_charm_inflow:.4f}B")
+            with col2:
+                st.metric("CHARM Outflow", f"{total_charm_outflow:.4f}B")
+            with col3:
+                st.metric("Net CHARM Flow", f"{net_charm_flow:.4f}B")
+        
+        # Tab 12: Intraday Timeline
+        with tabs[11]:
             st.markdown("### 📈 Intraday GEX/DEX Evolution")
             st.plotly_chart(create_intraday_timeline(df, selected_timestamp), use_container_width=True)
             
@@ -1681,7 +2053,8 @@ def main():
                     <div class="metric-delta">{'Lower volatility expected' if afternoon > 0 else 'Higher volatility expected'}</div>
                 </div>""", unsafe_allow_html=True)
         
-        with tabs[8]:
+        # Tab 13: OI & Data
+        with tabs[12]:
             st.markdown("### 📋 Open Interest Distribution")
             st.plotly_chart(create_oi_distribution(df_latest, spot_price), use_container_width=True)
             

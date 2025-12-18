@@ -183,6 +183,7 @@ st.markdown("""
 class DhanConfig:
     client_id: str = "1100480354"
     access_token: str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY2MDU1NDA2LCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2NTk2OTAwNiwidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.ehq9obDqz9DtUyttf5UBriJqnNMUMsCCLfJ9EJy-oXz3vQAMrbw9w_g83RCtOuHW_7JHA5uIpqIQ4UNbJIB46w"
+
 DHAN_SECURITY_IDS = {
     "NIFTY": 13, "BANKNIFTY": 25, "FINNIFTY": 27, "MIDCPNIFTY": 442
 }
@@ -994,6 +995,37 @@ def main():
         # Live data toggle
         live_mode = st.checkbox("📡 **LIVE DATA MODE** (Today's trading)", value=False, help="Enable to fetch real-time data for today")
         
+        # Auto-refresh settings (only show if live mode is enabled)
+        if live_mode:
+            st.markdown("---")
+            st.markdown("### 🔄 Auto-Refresh Settings")
+            
+            auto_refresh = st.checkbox("⚡ **Enable Auto-Refresh**", value=False, help="Automatically refresh data at set intervals")
+            
+            if auto_refresh:
+                refresh_interval = st.slider(
+                    "Refresh Interval (seconds)",
+                    min_value=60,
+                    max_value=180,
+                    value=120,
+                    step=30,
+                    help="How often to automatically fetch new data"
+                )
+                
+                st.success(f"🔄 Auto-refresh: **ON** | Every **{refresh_interval} seconds** ({refresh_interval/60:.1f} minutes)")
+                st.info("💡 Dashboard will automatically fetch latest data. You can also manually click 'Fetch' anytime.")
+                
+                # Store in session state
+                st.session_state.auto_refresh_enabled = True
+                st.session_state.refresh_interval = refresh_interval
+            else:
+                st.session_state.auto_refresh_enabled = False
+                st.info("🔄 Auto-refresh: OFF | Click 'Fetch Historical Data' manually to update")
+            
+            st.markdown("---")
+        else:
+            st.session_state.auto_refresh_enabled = False
+        
         if live_mode:
             # Force today's date
             today = datetime.now(IST).date()
@@ -1720,6 +1752,41 @@ def main():
         - Shows relative strength of positioning at each strike
         - Higher pressure = Stronger support/resistance
         """)
+    
+    # Auto-refresh logic (only in live mode)
+    if st.session_state.get('auto_refresh_enabled', False):
+        refresh_interval = st.session_state.get('refresh_interval', 120)
+        
+        # Add auto-refresh section at bottom
+        st.markdown("---")
+        st.markdown("### 🔄 Auto-Refresh Status")
+        
+        # Use st.empty for dynamic countdown
+        countdown_placeholder = st.empty()
+        status_placeholder = st.empty()
+        
+        # Get last refresh time from session state
+        if 'last_refresh_time' not in st.session_state:
+            st.session_state.last_refresh_time = time.time()
+        
+        elapsed = time.time() - st.session_state.last_refresh_time
+        remaining = max(0, refresh_interval - elapsed)
+        
+        # Display countdown
+        if remaining > 0:
+            countdown_placeholder.info(f"⏳ Next auto-refresh in: **{int(remaining)} seconds**")
+            status_placeholder.caption(f"Last refresh: {time.strftime('%H:%M:%S', time.localtime(st.session_state.last_refresh_time))}")
+            
+            # Auto-refresh using st.rerun after countdown
+            time.sleep(1)
+            st.rerun()
+        else:
+            # Time to refresh!
+            countdown_placeholder.success("🔄 Refreshing data now...")
+            st.session_state.last_refresh_time = time.time()
+            st.session_state.data_fetched = False  # Trigger new fetch
+            time.sleep(1)
+            st.rerun()
     
     # Footer
     st.markdown("---")

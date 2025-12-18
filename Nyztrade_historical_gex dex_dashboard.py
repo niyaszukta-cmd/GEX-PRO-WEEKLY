@@ -183,12 +183,14 @@ st.markdown("""
 class DhanConfig:
     client_id: str = "1100480354"
     access_token: str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY2MTY3NjM4LCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2NjA4MTIzOCwidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.epEDqRIQ3T4jt27ofCkrAVQsSlLN7vGXGZ3Ul5klDvXQt62aDeo_kdatbTEklzaUJu69tQMLEdteTt357oaqiQ"
+
+DHAN_SECURITY_IDS = {
     "NIFTY": 13, 
     "BANKNIFTY": 25, 
     "FINNIFTY": 27, 
     "MIDCPNIFTY": 442,
     "SENSEX": 51
-
+}
 
 SYMBOL_CONFIG = {
     "NIFTY": {"contract_size": 25, "strike_interval": 50},

@@ -183,7 +183,6 @@ st.markdown("""
 class DhanConfig:
     client_id: str = "1100480354"
     access_token: str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY2MDU1NDA2LCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2NTk2OTAwNiwidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.ehq9obDqz9DtUyttf5UBriJqnNMUMsCCLfJ9EJy-oXz3vQAMrbw9w_g83RCtOuHW_7JHA5uIpqIQ4UNbJIB46w"
-
 DHAN_SECURITY_IDS = {
     "NIFTY": 13, "BANKNIFTY": 25, "FINNIFTY": 27, "MIDCPNIFTY": 442
 }
@@ -257,7 +256,7 @@ class DhanHistoricalFetcher:
     
     def fetch_rolling_data(self, symbol: str, from_date: str, to_date: str, 
                           strike_type: str = "ATM", option_type: str = "CALL", 
-                          interval: str = "60", expiry_code: int = 1):
+                          interval: str = "60", expiry_code: int = 1, expiry_flag: str = "WEEK"):
         """Fetch historical rolling options data"""
         try:
             security_id = DHAN_SECURITY_IDS.get(symbol, 13)
@@ -267,8 +266,8 @@ class DhanHistoricalFetcher:
                 "interval": interval,
                 "securityId": security_id,
                 "instrument": "OPTIDX",
-                "expiryFlag": "MONTH",
-                "expiryCode": expiry_code,  # Now dynamic based on user selection
+                "expiryFlag": expiry_flag,  # WEEK or MONTH
+                "expiryCode": expiry_code,
                 "strike": strike_type,
                 "drvOptionType": option_type,
                 "requiredData": ["open", "high", "low", "close", "volume", "oi", "iv", "strike", "spot"],
@@ -294,7 +293,7 @@ class DhanHistoricalFetcher:
             return None
     
     def process_historical_data(self, symbol: str, target_date: str, strikes: List[str], 
-                               interval: str = "60", expiry_code: int = 1):
+                               interval: str = "60", expiry_code: int = 1, expiry_flag: str = "WEEK"):
         """Process historical data for a specific date"""
         
         # Convert to datetime
@@ -313,16 +312,16 @@ class DhanHistoricalFetcher:
         current_step = 0
         
         for strike_type in strikes:
-            status_text.text(f"Fetching {strike_type} (Expiry Code: {expiry_code})...")
+            status_text.text(f"Fetching {strike_type} ({expiry_flag} Expiry Code: {expiry_code})...")
             
-            # Fetch CALL data with interval and expiry_code
-            call_data = self.fetch_rolling_data(symbol, from_date, to_date, strike_type, "CALL", interval, expiry_code)
+            # Fetch CALL data with interval, expiry_code, and expiry_flag
+            call_data = self.fetch_rolling_data(symbol, from_date, to_date, strike_type, "CALL", interval, expiry_code, expiry_flag)
             current_step += 1
             progress_bar.progress(current_step / total_steps)
             time.sleep(1)
             
-            # Fetch PUT data with interval and expiry_code
-            put_data = self.fetch_rolling_data(symbol, from_date, to_date, strike_type, "PUT", interval, expiry_code)
+            # Fetch PUT data with interval, expiry_code, and expiry_flag
+            put_data = self.fetch_rolling_data(symbol, from_date, to_date, strike_type, "PUT", interval, expiry_code, expiry_flag)
             current_step += 1
             progress_bar.progress(current_step / total_steps)
             time.sleep(1)
@@ -456,7 +455,8 @@ class DhanHistoricalFetcher:
             'time_range': f"{df['time'].min()} - {df['time'].max()}",
             'strikes_count': df['strike'].nunique(),
             'interval': f"{interval} minutes",
-            'expiry_code': expiry_code
+            'expiry_code': expiry_code,
+            'expiry_flag': expiry_flag
         }
         
         return df, meta
@@ -991,89 +991,110 @@ def main():
         st.markdown("---")
         st.markdown("### 📅 Historical Date Selection")
         
-        # Date range selector
-        date_range_option = st.selectbox(
-            "Select Date Range",
-            ["Last 30 Days", "Last 60 Days", "Last 90 Days", "Last 6 Months", "Custom Range"],
-            index=0
-        )
+        # Live data toggle
+        live_mode = st.checkbox("📡 **LIVE DATA MODE** (Today's trading)", value=False, help="Enable to fetch real-time data for today")
         
-        if date_range_option == "Custom Range":
-            st.info("💡 Select any date range up to 6 months back")
-            col1, col2 = st.columns(2)
-            with col1:
-                start_date = st.date_input(
-                    "Start Date",
-                    value=datetime.now() - timedelta(days=30),
-                    max_value=datetime.now(),
-                    min_value=datetime.now() - timedelta(days=180)
-                )
-            with col2:
-                end_date = st.date_input(
-                    "End Date",
-                    value=datetime.now(),
-                    max_value=datetime.now(),
-                    min_value=start_date
-                )
-            
-            # Generate list of trading days in range
-            date_list = pd.date_range(start=start_date, end=end_date, freq='D')
-            # Filter to exclude weekends (API may not have data)
-            date_list = [d for d in date_list if d.weekday() < 5]  # Mon-Fri only
-            
+        if live_mode:
+            # Force today's date
+            today = datetime.now(IST).date()
+            selected_date = today
+            target_date = today.strftime('%Y-%m-%d')
+            st.success(f"🔴 LIVE MODE | Fetching real-time data for: **{target_date}** ({today.strftime('%A')})")
+            st.info("💡 Data updates every time you click 'Fetch Historical Data'")
         else:
-            # Predefined ranges
-            if date_range_option == "Last 30 Days":
-                days_back = 30
-            elif date_range_option == "Last 60 Days":
-                days_back = 60
-            elif date_range_option == "Last 90 Days":
-                days_back = 90
-            else:  # Last 6 Months
-                days_back = 180
-            
-            date_list = pd.date_range(
-                end=datetime.now(),
-                periods=days_back,
-                freq='D'
+            # Date range selector
+            date_range_option = st.selectbox(
+                "Select Date Range",
+                ["Last 30 Days", "Last 60 Days", "Last 90 Days", "Last 6 Months", "Custom Range"],
+                index=0
             )
-            date_list = [d for d in date_list if d.weekday() < 5]
-        
-        # Convert to date objects for selector
-        available_dates = [d.date() for d in date_list]
-        
-        # Show date range info
-        if len(available_dates) > 0:
-            st.caption(f"📊 {len(available_dates)} trading days available | From {available_dates[0]} to {available_dates[-1]}")
-        
-        selected_date = st.selectbox(
-            "Select Trading Day",
-            options=available_dates,
-            index=len(available_dates)-1 if len(available_dates) > 0 else 0,  # Default to most recent
-            format_func=lambda x: x.strftime('%Y-%m-%d (%A)')
-        )
-        
-        target_date = selected_date.strftime('%Y-%m-%d')
+            
+            if date_range_option == "Custom Range":
+                st.info("💡 Select any date range up to 6 months back")
+                col1, col2 = st.columns(2)
+                with col1:
+                    start_date = st.date_input(
+                        "Start Date",
+                        value=datetime.now() - timedelta(days=30),
+                        max_value=datetime.now(),
+                        min_value=datetime.now() - timedelta(days=180)
+                    )
+                with col2:
+                    end_date = st.date_input(
+                        "End Date",
+                        value=datetime.now(),
+                        max_value=datetime.now(),
+                        min_value=start_date
+                    )
+                
+                # Generate list of trading days in range
+                date_list = pd.date_range(start=start_date, end=end_date, freq='D')
+                # Filter to exclude weekends (API may not have data)
+                date_list = [d for d in date_list if d.weekday() < 5]  # Mon-Fri only
+                
+            else:
+                # Predefined ranges
+                if date_range_option == "Last 30 Days":
+                    days_back = 30
+                elif date_range_option == "Last 60 Days":
+                    days_back = 60
+                elif date_range_option == "Last 90 Days":
+                    days_back = 90
+                else:  # Last 6 Months
+                    days_back = 180
+                
+                date_list = pd.date_range(
+                    end=datetime.now(),
+                    periods=days_back,
+                    freq='D'
+                )
+                date_list = [d for d in date_list if d.weekday() < 5]
+            
+            # Convert to date objects for selector
+            available_dates = [d.date() for d in date_list]
+            
+            # Show date range info
+            if len(available_dates) > 0:
+                st.caption(f"📊 {len(available_dates)} trading days available | From {available_dates[0]} to {available_dates[-1]}")
+            
+            selected_date = st.selectbox(
+                "Select Trading Day",
+                options=available_dates,
+                index=len(available_dates)-1 if len(available_dates) > 0 else 0,  # Default to most recent
+                format_func=lambda x: x.strftime('%Y-%m-%d (%A)')
+            )
+            
+            target_date = selected_date.strftime('%Y-%m-%d')
         
         st.markdown("---")
-        st.markdown("### 📆 Expiry Selection")
+        st.markdown("### 📆 Expiry Type & Selection")
+        
+        # Expiry type selector
+        expiry_type = st.selectbox(
+            "Expiry Type",
+            ["Weekly", "Monthly"],
+            index=0,
+            help="Select weekly or monthly expiry contracts"
+        )
+        
+        expiry_flag = "WEEK" if expiry_type == "Weekly" else "MONTH"
         
         expiry_option = st.selectbox(
             "Select Expiry",
-            ["Current Month (Nearest)", "Next Month", "Far Month"],
+            ["Current Week/Month (Nearest)", "Next Week/Month", "Far Week/Month"],
             index=0,
-            help="Select which monthly expiry to analyze"
+            help="Select which expiry to analyze"
         )
         
         # Map to expiryCode
         expiry_code_map = {
-            "Current Month (Nearest)": 1,
-            "Next Month": 2,
-            "Far Month": 3
+            "Current Week/Month (Nearest)": 1,
+            "Next Week/Month": 2,
+            "Far Week/Month": 3
         }
         expiry_code = expiry_code_map[expiry_option]
         
-        st.info(f"📊 Selected expiry code: {expiry_code} | For historical dates, this represents the expiry that was active on that date")
+        st.info(f"📊 {expiry_type} Expiry | Code: {expiry_code} | {'Weekly contracts expire every Thursday' if expiry_type == 'Weekly' else 'Monthly contracts expire on last Thursday'}")
         
         st.markdown("---")
         st.markdown("### 🎯 Strike Selection")
@@ -1113,7 +1134,8 @@ def main():
             'target_date': target_date,
             'strikes': strikes,
             'interval': interval,
-            'expiry_code': expiry_code
+            'expiry_code': expiry_code,
+            'expiry_flag': expiry_flag
         }
         st.session_state.data_fetched = False  # Trigger fresh fetch
     
@@ -1127,6 +1149,7 @@ def main():
             strikes = config['strikes']
             interval = config['interval']
             expiry_code = config.get('expiry_code', 1)  # Default to 1 if not present
+            expiry_flag = config.get('expiry_flag', 'WEEK')  # Default to WEEK
         
         if not strikes:
             st.error("❌ Please select at least one strike")
@@ -1146,7 +1169,7 @@ def main():
             
             try:
                 fetcher = DhanHistoricalFetcher(DhanConfig())
-                df, meta = fetcher.process_historical_data(symbol, target_date, strikes, interval, expiry_code)
+                df, meta = fetcher.process_historical_data(symbol, target_date, strikes, interval, expiry_code, expiry_flag)
                 
                 if df is None or len(df) == 0:
                     st.error("❌ No data available for the selected date. Please try a different date or check if it was a trading day.")

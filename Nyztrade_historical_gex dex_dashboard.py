@@ -182,7 +182,7 @@ st.markdown("""
 @dataclass
 class DhanConfig:
     client_id: str = "1100480354"
-    access_token: str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY2MDU1NDA2LCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2NTk2OTAwNiwidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.ehq9obDqz9DtUyttf5UBriJqnNMUMsCCLfJ9EJy-oXz3vQAMrbw9w_g83RCtOuHW_7JHA5uIpqIQ4UNbJIB46w"
+    access_token: str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY1OTYzMzk2LCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2NTg3Njk5NiwidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.K93qVFYO2XrMJ-Jn4rY2autNZ444tc-AzYtaxVUsjRfsjW7NhfQom58vzuSMVI6nRMMB_sa7fCtWE5JIvk75yw"
 
 DHAN_SECURITY_IDS = {
     "NIFTY": 13, "BANKNIFTY": 25, "FINNIFTY": 27, "MIDCPNIFTY": 442
@@ -1012,12 +1012,24 @@ def main():
                     help="How often to automatically fetch new data"
                 )
                 
+                # Quiet mode option
+                quiet_mode = st.checkbox(
+                    "🔇 Quiet Mode",
+                    value=True,
+                    help="Minimize visual disruption during refresh (recommended)"
+                )
+                
                 st.success(f"🔄 Auto-refresh: **ON** | Every **{refresh_interval} seconds** ({refresh_interval/60:.1f} minutes)")
-                st.info("💡 Dashboard will automatically fetch latest data. You can also manually click 'Fetch' anytime.")
+                
+                if quiet_mode:
+                    st.info("💡 Quiet mode enabled - Smooth countdown, minimal blinking")
+                else:
+                    st.info("💡 Standard mode - Charts may flicker during refresh")
                 
                 # Store in session state
                 st.session_state.auto_refresh_enabled = True
                 st.session_state.refresh_interval = refresh_interval
+                st.session_state.quiet_mode = quiet_mode
             else:
                 st.session_state.auto_refresh_enabled = False
                 st.info("🔄 Auto-refresh: OFF | Click 'Fetch Historical Data' manually to update")
@@ -1753,17 +1765,19 @@ def main():
         - Higher pressure = Stronger support/resistance
         """)
     
-    # Auto-refresh logic (only in live mode)
+    # Auto-refresh logic (only in live mode) - WITH QUIET MODE
     if st.session_state.get('auto_refresh_enabled', False):
         refresh_interval = st.session_state.get('refresh_interval', 120)
+        quiet_mode = st.session_state.get('quiet_mode', True)
         
         # Add auto-refresh section at bottom
         st.markdown("---")
-        st.markdown("### 🔄 Auto-Refresh Status")
         
-        # Use st.empty for dynamic countdown
-        countdown_placeholder = st.empty()
-        status_placeholder = st.empty()
+        if quiet_mode:
+            # Quiet mode - Minimal UI updates
+            st.markdown("### 🔇 Auto-Refresh (Quiet Mode)")
+        else:
+            st.markdown("### 🔄 Auto-Refresh Status")
         
         # Get last refresh time from session state
         if 'last_refresh_time' not in st.session_state:
@@ -1774,18 +1788,39 @@ def main():
         
         # Display countdown
         if remaining > 0:
-            countdown_placeholder.info(f"⏳ Next auto-refresh in: **{int(remaining)} seconds**")
-            status_placeholder.caption(f"Last refresh: {time.strftime('%H:%M:%S', time.localtime(st.session_state.last_refresh_time))}")
+            mins = int(remaining // 60)
+            secs = int(remaining % 60)
             
-            # Auto-refresh using st.rerun after countdown
+            if quiet_mode:
+                # Minimal display in quiet mode
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.caption(f"⏳ Next: {mins:02d}:{secs:02d} | 🕐 Last: {time.strftime('%H:%M:%S', time.localtime(st.session_state.last_refresh_time))}")
+                with col2:
+                    # Small progress indicator
+                    progress = 1 - (remaining / refresh_interval)
+                    st.progress(progress, text=f"{int(progress*100)}%")
+            else:
+                # Full display in standard mode
+                progress = 1 - (remaining / refresh_interval)
+                st.progress(progress)
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.info(f"⏳ Next refresh in: **{mins:02d}:{secs:02d}**")
+                with col2:
+                    st.caption(f"🕐 Last updated: {time.strftime('%H:%M:%S', time.localtime(st.session_state.last_refresh_time))}")
+            
+            # Countdown without reload
             time.sleep(1)
             st.rerun()
         else:
             # Time to refresh!
-            countdown_placeholder.success("🔄 Refreshing data now...")
+            if not quiet_mode:
+                st.success("🔄 Fetching latest data...")
+            
             st.session_state.last_refresh_time = time.time()
             st.session_state.data_fetched = False  # Trigger new fetch
-            time.sleep(1)
             st.rerun()
     
     # Footer

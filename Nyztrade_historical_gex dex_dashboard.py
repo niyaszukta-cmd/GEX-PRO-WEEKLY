@@ -182,7 +182,6 @@ st.markdown("""
 class DhanConfig:
     client_id: str = "1100480354"
     access_token: str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY2NDA4NjM2LCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2NjMyMjIzNiwidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.SJ0le9IYzSWcsOemtkk-Ls7WxBv_oi1BvgKa911NKDLLqG1y11nWjS3l03GemXthkpG7oWoin0_tAMg6SohSMg"
-
 DHAN_SECURITY_IDS = {
     "NIFTY": 13, 
     "BANKNIFTY": 25, 
@@ -1210,12 +1209,6 @@ def main():
         
         st.success(f"✅ Data fetched successfully! Total records: {len(df):,} | Strikes: {meta['strikes_count']}")
         
-        # Info about calculation methodology
-        st.info(f"""
-        📊 **Calculation Method**: Market metrics (GEX Suppression/Amplification, DEX Bullish/Bearish) are calculated using only the **nearest 6 strikes (±3 from ATM)** around spot price ₹{spot_price:,.2f}. 
-        This focuses on strikes with actual market impact. All selected strikes are displayed in charts for comprehensive analysis.
-        """)
-        
         st.markdown("---")
         st.markdown("### ⏱️ Time Navigation")
         
@@ -1331,6 +1324,13 @@ def main():
         # Keep df_latest for full display in charts
         
         st.markdown("### 📊 Historical Data Overview")
+        
+        # Info about calculation methodology
+        st.info(f"""
+        📊 **Calculation Method**: Market metrics below are calculated using only the **nearest 6 strikes (±3 from ATM)** around spot price ₹{spot_price:,.2f}. 
+        This focuses on strikes with actual market impact. All selected strikes are displayed in charts for comprehensive analysis.
+        """)
+        
         cols = st.columns(6)
         
         with cols[0]:

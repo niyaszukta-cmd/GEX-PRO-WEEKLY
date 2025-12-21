@@ -1210,6 +1210,12 @@ def main():
         
         st.success(f"✅ Data fetched successfully! Total records: {len(df):,} | Strikes: {meta['strikes_count']}")
         
+        # Info about calculation methodology
+        st.info(f"""
+        📊 **Calculation Method**: Market metrics (GEX Suppression/Amplification, DEX Bullish/Bearish) are calculated using only the **nearest 6 strikes (±3 from ATM)** around spot price ₹{spot_price:,.2f}. 
+        This focuses on strikes with actual market impact. All selected strikes are displayed in charts for comprehensive analysis.
+        """)
+        
         st.markdown("---")
         st.markdown("### ⏱️ Time Navigation")
         
@@ -1302,12 +1308,27 @@ def main():
         df_latest = df_selected
         spot_price = df_latest['spot_price'].iloc[0] if len(df_latest) > 0 else 0
         
-        total_gex = df_latest['net_gex'].sum()
-        total_dex = df_latest['net_dex'].sum()
+        # CRITICAL FIX: Use only nearest 6 strikes for calculation (±3 from ATM)
+        # This prevents far OTM strikes from distorting the suppression/amplification signal
+        config = SYMBOL_CONFIG.get(symbol, SYMBOL_CONFIG["NIFTY"])
+        strike_interval = config["strike_interval"]
+        
+        # Calculate strike range for nearest 6 strikes (±3 strikes from spot)
+        strike_range = 3 * strike_interval
+        df_calc = df_latest[
+            (df_latest['strike'] >= spot_price - strike_range) & 
+            (df_latest['strike'] <= spot_price + strike_range)
+        ].copy()
+        
+        # Use filtered data for metrics calculation
+        total_gex = df_calc['net_gex'].sum()
+        total_dex = df_calc['net_dex'].sum()
         total_net = total_gex + total_dex
-        total_call_oi = df_latest['call_oi'].sum()
-        total_put_oi = df_latest['put_oi'].sum()
+        total_call_oi = df_calc['call_oi'].sum()
+        total_put_oi = df_calc['put_oi'].sum()
         pcr = total_put_oi / total_call_oi if total_call_oi > 0 else 1
+        
+        # Keep df_latest for full display in charts
         
         st.markdown("### 📊 Historical Data Overview")
         cols = st.columns(6)
@@ -1389,11 +1410,12 @@ def main():
         # Tab 0: NET GEX (NEW)
         with tabs[0]:
             st.markdown("### 📊 NET Gamma Exposure (NET GEX)")
+            st.markdown(f"*Calculated using nearest 6 strikes (±3 from ATM at ₹{spot_price:,.0f})*")
             st.plotly_chart(create_separate_gex_chart(df_latest, spot_price), use_container_width=True, key="net_gex_chart")
             
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("Total NET GEX", f"{total_gex:.4f}B")
+                st.metric("Total NET GEX (Nearest 6 Strikes)", f"{total_gex:.4f}B")
             with col2:
                 gex_status = "Volatility Suppression (Range-Bound)" if total_gex > 0 else "Volatility Amplification (Trending)"
                 st.info(f"📌 Market Status: {gex_status}")
@@ -1401,11 +1423,12 @@ def main():
         # Tab 1: NET DEX (NEW)
         with tabs[1]:
             st.markdown("### 📊 NET Delta Exposure (NET DEX)")
+            st.markdown(f"*Calculated using nearest 6 strikes (±3 from ATM at ₹{spot_price:,.0f})*")
             st.plotly_chart(create_separate_dex_chart(df_latest, spot_price), use_container_width=True, key="net_dex_chart")
             
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("Total NET DEX", f"{total_dex:.4f}B")
+                st.metric("Total NET DEX (Nearest 6 Strikes)", f"{total_dex:.4f}B")
             with col2:
                 dex_status = "Bullish Positioning" if total_dex > 0 else "Bearish Positioning"
                 st.info(f"📌 Market Direction: {dex_status}")
@@ -1546,15 +1569,22 @@ def main():
         **New Features:**
         - 📊 **NET GEX** - Total gamma exposure analysis
         - 📊 **NET DEX** - Total delta exposure analysis
-        - 🎯 **Extended Strikes** - Now up to ATM ±10
+        - 🎯 **Extended Strikes** - Now up to ATM ±10 for comprehensive view
         - 🌊 **NET GEX/DEX Flow** - Track flow changes
         - 📅 **Recent Data Access** - Yesterday's data now accessible
+        
+        **Calculation Methodology:**
+        - **Market Metrics** (GEX Suppression/Amplification, DEX Direction) are calculated using only the **nearest 6 strikes (±3 from ATM)**
+        - This focuses on strikes with actual market impact and prevents far OTM strikes from distorting signals
+        - **All selected strikes** are displayed in charts for comprehensive analysis
         
         **How to use:**
         1. Select index and date
         2. Choose strikes (up to ±10)
         3. Click "Fetch Historical Data"
         4. Navigate through 12 comprehensive tabs
+        
+        **💡 Pro Tip:** Select wider strike range (±6 to ±10) for complete picture, while core metrics focus on nearest strikes for accuracy.
         """)
     
     st.markdown("---")

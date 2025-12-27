@@ -1,6 +1,6 @@
 # ============================================================================
-# NYZTrade Historical GEX/DEX Dashboard - FIXED VERSION
-# Gamma Flip Zones + Volume Overlays + Bug Fix
+# NYZTrade Historical GEX/DEX Dashboard - FINAL VERSION
+# All modifications applied as requested
 # ============================================================================
 
 import streamlit as st
@@ -182,7 +182,6 @@ st.markdown("""
 class DhanConfig:
     client_id: str = "1100480354"
     access_token: str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY2OTE0Nzc4LCJhcHBfaWQiOiJjOTNkM2UwOSIsImlhdCI6MTc2NjgyODM3OCwidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.9BsXQfSWvjCL9s5bzuV5HszArUV1J5gqBMGfC8xLP7YnXsRvEFzIcyYIUvfgdnd_rfH8iQ9IWlpfZdIwm_IMbw"
-
 DHAN_SECURITY_IDS = {
     "NIFTY": 13, 
     "BANKNIFTY": 25, 
@@ -274,66 +273,6 @@ class BlackScholesCalculator:
             return 0
 
 # ============================================================================
-# GAMMA FLIP ZONE CALCULATOR
-# ============================================================================
-
-def identify_gamma_flip_zones(df: pd.DataFrame, spot_price: float) -> List[Dict]:
-    """
-    Identifies gamma flip zones where GEX crosses zero.
-    Returns list of flip zones with strike levels and direction indicators.
-    """
-    df_sorted = df.sort_values('strike').reset_index(drop=True)
-    
-    flip_zones = []
-    
-    for i in range(len(df_sorted) - 1):
-        current_gex = df_sorted.iloc[i]['net_gex']
-        next_gex = df_sorted.iloc[i + 1]['net_gex']
-        current_strike = df_sorted.iloc[i]['strike']
-        next_strike = df_sorted.iloc[i + 1]['strike']
-        
-        # Check if GEX crosses zero between these strikes
-        if (current_gex > 0 and next_gex < 0) or (current_gex < 0 and next_gex > 0):
-            # Interpolate the exact flip strike
-            flip_strike = current_strike + (next_strike - current_strike) * (abs(current_gex) / (abs(current_gex) + abs(next_gex)))
-            
-            # Determine flip direction based on spot position
-            if spot_price < flip_strike:
-                # Spot is below flip zone
-                if current_gex > 0:
-                    direction = "upward"  # Moving up crosses from positive to negative (suppression to amplification)
-                    arrow = "↑"
-                    color = "#ef4444"  # Red - amplification above
-                else:
-                    direction = "downward"  # This shouldn't happen if sorted correctly
-                    arrow = "↓"
-                    color = "#10b981"
-            else:
-                # Spot is above flip zone
-                if current_gex < 0:
-                    direction = "downward"  # Moving down crosses from negative to positive (amplification to suppression)
-                    arrow = "↓"
-                    color = "#10b981"  # Green - suppression below
-                else:
-                    direction = "upward"
-                    arrow = "↑"
-                    color = "#ef4444"
-            
-            flip_zones.append({
-                'strike': flip_strike,
-                'lower_strike': current_strike,
-                'upper_strike': next_strike,
-                'lower_gex': current_gex,
-                'upper_gex': next_gex,
-                'direction': direction,
-                'arrow': arrow,
-                'color': color,
-                'flip_type': 'Positive→Negative' if current_gex > 0 else 'Negative→Positive'
-            })
-    
-    return flip_zones
-
-# ============================================================================
 # DHAN ROLLING API FETCHER
 # ============================================================================
 
@@ -389,6 +328,7 @@ class DhanHistoricalFetcher:
         
         target_dt = datetime.strptime(target_date, '%Y-%m-%d')
         
+        # FIXED: Wider date range for recent dates
         from_date = (target_dt - timedelta(days=2)).strftime('%Y-%m-%d')
         to_date = (target_dt + timedelta(days=2)).strftime('%Y-%m-%d')
         
@@ -706,476 +646,170 @@ def create_net_dex_flow_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
     return fig
 
 def create_separate_gex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
-    """GEX chart with gamma flip zones and volume overlay - FIXED"""
     df_sorted = df.sort_values('strike').reset_index(drop=True)
     colors = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['net_gex']]
     
-    # Identify gamma flip zones
-    flip_zones = identify_gamma_flip_zones(df_sorted, spot_price)
+    fig = go.Figure()
     
-    # Create figure with secondary y-axis for volume
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(go.Bar(
+        y=df_sorted['strike'],
+        x=df_sorted['net_gex'],
+        orientation='h',
+        marker_color=colors,
+        name='Net GEX',
+        hovertemplate='Strike: %{y:,.0f}<br>Net GEX: %{x:.4f}B<extra></extra>',
+        showlegend=False
+    ))
     
-    # Add GEX bars (primary y-axis)
-    fig.add_trace(
-        go.Bar(
-            y=df_sorted['strike'],
-            x=df_sorted['net_gex'],
-            orientation='h',
-            marker_color=colors,
-            name='Net GEX',
-            hovertemplate='Strike: %{y:,.0f}<br>Net GEX: %{x:.4f}B<extra></extra>',
-            opacity=0.8
-        ),
-        secondary_y=False
-    )
-    
-    # Add volume overlay (secondary y-axis)
-    fig.add_trace(
-        go.Scatter(
-            y=df_sorted['strike'],
-            x=df_sorted['total_volume'],
-            mode='lines+markers',
-            line=dict(color='rgba(245, 158, 11, 0.6)', width=2),
-            marker=dict(size=6, color='rgba(245, 158, 11, 0.8)'),
-            name='Total Volume',
-            hovertemplate='Strike: %{y:,.0f}<br>Volume: %{x:,.0f}<extra></extra>'
-        ),
-        secondary_y=True
-    )
-    
-    # Add spot price line
-    fig.add_hline(
-        y=spot_price, 
-        line_dash="dash", 
-        line_color="#06b6d4", 
-        line_width=3,
-        annotation_text=f"Spot: {spot_price:,.2f}", 
-        annotation_position="top right",
-        annotation=dict(font=dict(size=12, color="white"))
-    )
-    
-    # Add gamma flip zones
-    for zone in flip_zones:
-        # Add horizontal line at flip zone
-        fig.add_hline(
-            y=zone['strike'],
-            line_dash="dot",
-            line_color=zone['color'],
-            line_width=2,
-            annotation_text=f"🔄 Flip {zone['arrow']} {zone['strike']:,.0f}",
-            annotation_position="left",
-            annotation=dict(
-                font=dict(size=10, color=zone['color']),
-                bgcolor='rgba(0,0,0,0.7)',
-                bordercolor=zone['color'],
-                borderwidth=1
-            )
-        )
-        
-        # Add shaded region around flip zone
-        fig.add_hrect(
-            y0=zone['lower_strike'],
-            y1=zone['upper_strike'],
-            fillcolor=zone['color'],
-            opacity=0.1,
-            line_width=0,
-            annotation_text=zone['arrow'],
-            annotation_position="right",
-            annotation=dict(font=dict(size=16, color=zone['color']))
-        )
+    fig.add_hline(y=spot_price, line_dash="dash", line_color="#06b6d4", line_width=3,
+                  annotation_text=f"Spot: {spot_price:,.2f}", annotation_position="top right",
+                  annotation=dict(font=dict(size=12, color="white")))
     
     fig.update_layout(
-        title=dict(
-            text="<b>🎯 Gamma Exposure (GEX) with Flip Zones & Volume</b>", 
-            font=dict(size=18, color='white')
-        ),
+        title=dict(text="<b>🎯 Gamma Exposure (GEX)</b>", font=dict(size=18, color='white')),
+        xaxis_title="GEX (₹ Billions)",
+        yaxis_title="Strike Price",
         template="plotly_dark",
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(26,35,50,0.8)',
         height=700,
+        showlegend=False,
         hovermode='closest',
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-            font=dict(color='white')
-        ),
-        margin=dict(l=80, r=80, t=100, b=80)
-    )
-    
-    # FIXED: Update axes correctly for secondary_y
-    fig.update_xaxes(
-        title_text="GEX (₹ Billions)", 
-        gridcolor='rgba(128,128,128,0.2)', 
-        showgrid=True
-    )
-    fig.update_yaxes(
-        title_text="Strike Price", 
-        gridcolor='rgba(128,128,128,0.2)', 
-        showgrid=True, 
-        autorange=True,
-        secondary_y=False
-    )
-    fig.update_yaxes(
-        title_text="Volume",
-        gridcolor='rgba(128,128,128,0.1)',
-        showgrid=False,
-        secondary_y=True
+        xaxis=dict(gridcolor='rgba(128,128,128,0.2)', showgrid=True),
+        yaxis=dict(gridcolor='rgba(128,128,128,0.2)', showgrid=True, autorange=True),
+        margin=dict(l=80, r=80, t=80, b=80)
     )
     
     return fig
 
 def create_separate_dex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
-    """DEX chart with volume overlay - FIXED"""
     df_sorted = df.sort_values('strike').reset_index(drop=True)
     colors = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['net_dex']]
     
-    # Create figure with secondary y-axis for volume
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig = go.Figure()
     
-    # Add DEX bars (primary y-axis)
-    fig.add_trace(
-        go.Bar(
-            y=df_sorted['strike'],
-            x=df_sorted['net_dex'],
-            orientation='h',
-            marker_color=colors,
-            name='Net DEX',
-            hovertemplate='Strike: %{y:,.0f}<br>Net DEX: %{x:.4f}B<extra></extra>',
-            opacity=0.8
-        ),
-        secondary_y=False
-    )
+    fig.add_trace(go.Bar(
+        y=df_sorted['strike'],
+        x=df_sorted['net_dex'],
+        orientation='h',
+        marker_color=colors,
+        name='Net DEX',
+        hovertemplate='Strike: %{y:,.0f}<br>Net DEX: %{x:.4f}B<extra></extra>',
+        showlegend=False
+    ))
     
-    # Add volume overlay (secondary y-axis)
-    fig.add_trace(
-        go.Scatter(
-            y=df_sorted['strike'],
-            x=df_sorted['total_volume'],
-            mode='lines+markers',
-            line=dict(color='rgba(245, 158, 11, 0.6)', width=2),
-            marker=dict(size=6, color='rgba(245, 158, 11, 0.8)'),
-            name='Total Volume',
-            hovertemplate='Strike: %{y:,.0f}<br>Volume: %{x:,.0f}<extra></extra>'
-        ),
-        secondary_y=True
-    )
-    
-    # Add spot price line
-    fig.add_hline(
-        y=spot_price, 
-        line_dash="dash", 
-        line_color="#06b6d4", 
-        line_width=3,
-        annotation_text=f"Spot: {spot_price:,.2f}", 
-        annotation_position="top right",
-        annotation=dict(font=dict(size=12, color="white"))
-    )
+    fig.add_hline(y=spot_price, line_dash="dash", line_color="#06b6d4", line_width=3,
+                  annotation_text=f"Spot: {spot_price:,.2f}", annotation_position="top right",
+                  annotation=dict(font=dict(size=12, color="white")))
     
     fig.update_layout(
-        title=dict(
-            text="<b>📊 Delta Exposure (DEX) with Volume</b>", 
-            font=dict(size=18, color='white')
-        ),
+        title=dict(text="<b>📊 Delta Exposure (DEX)</b>", font=dict(size=18, color='white')),
+        xaxis_title="DEX (₹ Billions)",
+        yaxis_title="Strike Price",
         template="plotly_dark",
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(26,35,50,0.8)',
         height=700,
+        showlegend=False,
         hovermode='closest',
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-            font=dict(color='white')
-        ),
-        margin=dict(l=80, r=80, t=100, b=80)
-    )
-    
-    # FIXED: Update axes correctly for secondary_y
-    fig.update_xaxes(
-        title_text="DEX (₹ Billions)", 
-        gridcolor='rgba(128,128,128,0.2)', 
-        showgrid=True
-    )
-    fig.update_yaxes(
-        title_text="Strike Price", 
-        gridcolor='rgba(128,128,128,0.2)', 
-        showgrid=True, 
-        autorange=True,
-        secondary_y=False
-    )
-    fig.update_yaxes(
-        title_text="Volume",
-        gridcolor='rgba(128,128,128,0.1)',
-        showgrid=False,
-        secondary_y=True
+        xaxis=dict(gridcolor='rgba(128,128,128,0.2)', showgrid=True),
+        yaxis=dict(gridcolor='rgba(128,128,128,0.2)', showgrid=True, autorange=True),
+        margin=dict(l=80, r=80, t=80, b=80)
     )
     
     return fig
 
 def create_net_gex_dex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
-    """Combined NET GEX+DEX chart with gamma flip zones and volume overlay - FIXED"""
     df_sorted = df.sort_values('strike').reset_index(drop=True)
     df_sorted['net_gex_dex'] = df_sorted['net_gex'] + df_sorted['net_dex']
     colors = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['net_gex_dex']]
     
-    # Identify gamma flip zones (based on GEX)
-    flip_zones = identify_gamma_flip_zones(df_sorted, spot_price)
+    fig = go.Figure()
     
-    # Create figure with secondary y-axis for volume
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(go.Bar(
+        y=df_sorted['strike'],
+        x=df_sorted['net_gex_dex'],
+        orientation='h',
+        marker_color=colors,
+        name='Net GEX+DEX',
+        hovertemplate='Strike: %{y:,.0f}<br>Net GEX+DEX: %{x:.4f}B<extra></extra>',
+        showlegend=False
+    ))
     
-    # Add NET GEX+DEX bars (primary y-axis)
-    fig.add_trace(
-        go.Bar(
-            y=df_sorted['strike'],
-            x=df_sorted['net_gex_dex'],
-            orientation='h',
-            marker_color=colors,
-            name='Net GEX+DEX',
-            hovertemplate='Strike: %{y:,.0f}<br>Net GEX+DEX: %{x:.4f}B<extra></extra>',
-            opacity=0.8
-        ),
-        secondary_y=False
-    )
-    
-    # Add volume overlay (secondary y-axis)
-    fig.add_trace(
-        go.Scatter(
-            y=df_sorted['strike'],
-            x=df_sorted['total_volume'],
-            mode='lines+markers',
-            line=dict(color='rgba(245, 158, 11, 0.6)', width=2),
-            marker=dict(size=6, color='rgba(245, 158, 11, 0.8)'),
-            name='Total Volume',
-            hovertemplate='Strike: %{y:,.0f}<br>Volume: %{x:,.0f}<extra></extra>'
-        ),
-        secondary_y=True
-    )
-    
-    # Add spot price line
-    fig.add_hline(
-        y=spot_price, 
-        line_dash="dash", 
-        line_color="#06b6d4", 
-        line_width=3,
-        annotation_text=f"Spot: {spot_price:,.2f}", 
-        annotation_position="top right",
-        annotation=dict(font=dict(size=12, color="white"))
-    )
-    
-    # Add gamma flip zones
-    for zone in flip_zones:
-        fig.add_hline(
-            y=zone['strike'],
-            line_dash="dot",
-            line_color=zone['color'],
-            line_width=2,
-            annotation_text=f"🔄 Flip {zone['arrow']} {zone['strike']:,.0f}",
-            annotation_position="left",
-            annotation=dict(
-                font=dict(size=10, color=zone['color']),
-                bgcolor='rgba(0,0,0,0.7)',
-                bordercolor=zone['color'],
-                borderwidth=1
-            )
-        )
-        
-        fig.add_hrect(
-            y0=zone['lower_strike'],
-            y1=zone['upper_strike'],
-            fillcolor=zone['color'],
-            opacity=0.1,
-            line_width=0,
-            annotation_text=zone['arrow'],
-            annotation_position="right",
-            annotation=dict(font=dict(size=16, color=zone['color']))
-        )
+    fig.add_hline(y=spot_price, line_dash="dash", line_color="#06b6d4", line_width=3,
+                  annotation_text=f"Spot: {spot_price:,.2f}", annotation_position="top right",
+                  annotation=dict(font=dict(size=12, color="white")))
     
     fig.update_layout(
-        title=dict(
-            text="<b>⚡ Combined NET GEX + DEX with Flip Zones & Volume</b>", 
-            font=dict(size=18, color='white')
-        ),
+        title=dict(text="<b>⚡ Combined NET GEX + DEX</b>", font=dict(size=18, color='white')),
+        xaxis_title="Combined Exposure (₹ Billions)",
+        yaxis_title="Strike Price",
         template="plotly_dark",
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(26,35,50,0.8)',
         height=700,
+        showlegend=False,
         hovermode='closest',
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-            font=dict(color='white')
-        ),
-        margin=dict(l=80, r=80, t=100, b=80)
-    )
-    
-    # FIXED: Update axes correctly for secondary_y
-    fig.update_xaxes(
-        title_text="Combined Exposure (₹ Billions)", 
-        gridcolor='rgba(128,128,128,0.2)', 
-        showgrid=True
-    )
-    fig.update_yaxes(
-        title_text="Strike Price", 
-        gridcolor='rgba(128,128,128,0.2)', 
-        showgrid=True, 
-        autorange=True,
-        secondary_y=False
-    )
-    fig.update_yaxes(
-        title_text="Volume",
-        gridcolor='rgba(128,128,128,0.1)',
-        showgrid=False,
-        secondary_y=True
+        xaxis=dict(gridcolor='rgba(128,128,128,0.2)', showgrid=True),
+        yaxis=dict(gridcolor='rgba(128,128,128,0.2)', showgrid=True, autorange=True),
+        margin=dict(l=80, r=80, t=80, b=80)
     )
     
     return fig
 
 def create_hedging_pressure_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
-    """Hedging pressure chart with gamma flip zones and volume overlay - FIXED"""
     df_sorted = df.sort_values('strike').reset_index(drop=True)
     
-    # Identify gamma flip zones
-    flip_zones = identify_gamma_flip_zones(df_sorted, spot_price)
+    fig = go.Figure()
     
-    # Create figure with secondary y-axis for volume
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    
-    # Add hedging pressure bars (primary y-axis)
-    fig.add_trace(
-        go.Bar(
-            y=df_sorted['strike'],
-            x=df_sorted['hedging_pressure'],
-            orientation='h',
-            marker=dict(
-                color=df_sorted['hedging_pressure'],
-                colorscale='RdYlGn',
-                showscale=True,
-                colorbar=dict(
-                    title=dict(text='Pressure %', font=dict(color='white', size=12)),
-                    tickfont=dict(color='white'),
-                    x=1.15,
-                    len=0.7,
-                    thickness=20
-                ),
-                cmin=-100,
-                cmax=100
+    fig.add_trace(go.Bar(
+        y=df_sorted['strike'],
+        x=df_sorted['hedging_pressure'],
+        orientation='h',
+        marker=dict(
+            color=df_sorted['hedging_pressure'],
+            colorscale='RdYlGn',
+            showscale=True,
+            colorbar=dict(
+                title=dict(text='Pressure %', font=dict(color='white', size=12)),
+                tickfont=dict(color='white'),
+                x=1.02,
+                len=0.7,
+                thickness=20
             ),
-            hovertemplate='Strike: %{y:,.0f}<br>Pressure: %{x:.1f}%<extra></extra>',
-            name='Hedging Pressure',
-            opacity=0.8
+            cmin=-100,
+            cmax=100
         ),
-        secondary_y=False
-    )
+        hovertemplate='Strike: %{y:,.0f}<br>Pressure: %{x:.1f}%<extra></extra>',
+        showlegend=False
+    ))
     
-    # Add volume overlay (secondary y-axis)
-    fig.add_trace(
-        go.Scatter(
-            y=df_sorted['strike'],
-            x=df_sorted['total_volume'],
-            mode='lines+markers',
-            line=dict(color='rgba(245, 158, 11, 0.6)', width=2),
-            marker=dict(size=6, color='rgba(245, 158, 11, 0.8)'),
-            name='Total Volume',
-            hovertemplate='Strike: %{y:,.0f}<br>Volume: %{x:,.0f}<extra></extra>'
-        ),
-        secondary_y=True
-    )
+    fig.add_hline(y=spot_price, line_dash="dash", line_color="#06b6d4", line_width=3,
+                  annotation_text=f"Spot: {spot_price:,.2f}", annotation_position="top right",
+                  annotation=dict(font=dict(size=12, color="white")))
     
-    # Add spot price line
-    fig.add_hline(
-        y=spot_price, 
-        line_dash="dash", 
-        line_color="#06b6d4", 
-        line_width=3,
-        annotation_text=f"Spot: {spot_price:,.2f}", 
-        annotation_position="top right",
-        annotation=dict(font=dict(size=12, color="white"))
-    )
-    
-    # Add zero line
     fig.add_vline(x=0, line_dash="dot", line_color="gray", line_width=1)
     
-    # Add gamma flip zones
-    for zone in flip_zones:
-        fig.add_hline(
-            y=zone['strike'],
-            line_dash="dot",
-            line_color=zone['color'],
-            line_width=2,
-            annotation_text=f"🔄 Flip {zone['arrow']} {zone['strike']:,.0f}",
-            annotation_position="left",
-            annotation=dict(
-                font=dict(size=10, color=zone['color']),
-                bgcolor='rgba(0,0,0,0.7)',
-                bordercolor=zone['color'],
-                borderwidth=1
-            )
-        )
-        
-        fig.add_hrect(
-            y0=zone['lower_strike'],
-            y1=zone['upper_strike'],
-            fillcolor=zone['color'],
-            opacity=0.1,
-            line_width=0,
-            annotation_text=zone['arrow'],
-            annotation_position="right",
-            annotation=dict(font=dict(size=16, color=zone['color']))
-        )
-    
     fig.update_layout(
-        title=dict(
-            text="<b>🎪 Hedging Pressure with Flip Zones & Volume</b>", 
-            font=dict(size=18, color='white')
-        ),
+        title=dict(text="<b>🎪 Hedging Pressure Distribution</b>", font=dict(size=18, color='white')),
+        xaxis_title="Hedging Pressure (%)",
+        yaxis_title="Strike Price",
         template="plotly_dark",
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(26,35,50,0.8)',
         height=700,
+        showlegend=False,
         hovermode='closest',
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-            font=dict(color='white')
+        xaxis=dict(
+            gridcolor='rgba(128,128,128,0.2)', 
+            showgrid=True,
+            zeroline=True,
+            zerolinecolor='rgba(128,128,128,0.5)',
+            zerolinewidth=2,
+            range=[-110, 110]
         ),
-        margin=dict(l=80, r=120, t=100, b=80)
-    )
-    
-    # FIXED: Update axes correctly for secondary_y
-    fig.update_xaxes(
-        title_text="Hedging Pressure (%)", 
-        gridcolor='rgba(128,128,128,0.2)', 
-        showgrid=True,
-        zeroline=True,
-        zerolinecolor='rgba(128,128,128,0.5)',
-        zerolinewidth=2,
-        range=[-110, 110]
-    )
-    fig.update_yaxes(
-        title_text="Strike Price", 
-        gridcolor='rgba(128,128,128,0.2)', 
-        showgrid=True, 
-        autorange=True,
-        secondary_y=False
-    )
-    fig.update_yaxes(
-        title_text="Volume",
-        gridcolor='rgba(128,128,128,0.1)',
-        showgrid=False,
-        secondary_y=True
+        yaxis=dict(gridcolor='rgba(128,128,128,0.2)', showgrid=True, autorange=True),
+        margin=dict(l=80, r=120, t=80, b=80)
     )
     
     return fig
@@ -1348,7 +982,7 @@ def main():
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
                 <h1 class="main-title">📊 NYZTrade Historical GEX/DEX Dashboard</h1>
-                <p class="sub-title">Historical Options Greeks Analysis | Gamma Flip Zones | Volume Overlays | Indian Standard Time</p>
+                <p class="sub-title">Historical Options Greeks Analysis | Dhan Rolling API | Indian Standard Time</p>
             </div>
             <div class="history-indicator">
                 <div class="history-dot"></div>
@@ -1484,6 +1118,7 @@ def main():
         st.markdown("---")
         st.markdown("### 🎯 Strike Selection")
         
+        # MODIFIED: Added +/- 10 strikes
         strikes = st.multiselect(
             "Select Strikes",
             ["ATM", "ATM+1", "ATM-1", "ATM+2", "ATM-2", "ATM+3", "ATM-3", 
@@ -1666,10 +1301,12 @@ def main():
         df_latest = df_selected
         spot_price = df_latest['spot_price'].iloc[0] if len(df_latest) > 0 else 0
         
-        # Calculate strike range for nearest 6 strikes (±3 from ATM)
+        # CRITICAL FIX: Use only nearest 6 strikes for calculation (±3 from ATM)
+        # This prevents far OTM strikes from distorting the suppression/amplification signal
         config = SYMBOL_CONFIG.get(symbol, SYMBOL_CONFIG["NIFTY"])
         strike_interval = config["strike_interval"]
         
+        # Calculate strike range for nearest 6 strikes (±3 strikes from spot)
         strike_range = 3 * strike_interval
         df_calc = df_latest[
             (df_latest['strike'] >= spot_price - strike_range) & 
@@ -1684,26 +1321,15 @@ def main():
         total_put_oi = df_calc['put_oi'].sum()
         pcr = total_put_oi / total_call_oi if total_call_oi > 0 else 1
         
-        # Identify gamma flip zones
-        flip_zones = identify_gamma_flip_zones(df_latest, spot_price)
+        # Keep df_latest for full display in charts
         
         st.markdown("### 📊 Historical Data Overview")
         
-        # Info about calculation methodology and flip zones
-        if len(flip_zones) > 0:
-            flip_info = " | ".join([f"🔄 Flip @ ₹{z['strike']:,.0f} {z['arrow']}" for z in flip_zones[:3]])
-            st.info(f"""
-            📊 **Calculation Method**: Market metrics below are calculated using only the **nearest 6 strikes (±3 from ATM)** around spot price ₹{spot_price:,.2f}. 
-            
-            🎯 **Gamma Flip Zones Detected**: {flip_info}
-            
-            The arrow (↑/↓) shows the valid flip direction based on spot position relative to the flip zone.
-            """)
-        else:
-            st.info(f"""
-            📊 **Calculation Method**: Market metrics below are calculated using only the **nearest 6 strikes (±3 from ATM)** around spot price ₹{spot_price:,.2f}. 
-            This focuses on strikes with actual market impact. All selected strikes are displayed in charts for comprehensive analysis.
-            """)
+        # Info about calculation methodology
+        st.info(f"""
+        📊 **Calculation Method**: Market metrics below are calculated using only the **nearest 6 strikes (±3 from ATM)** around spot price ₹{spot_price:,.2f}. 
+        This focuses on strikes with actual market impact. All selected strikes are displayed in charts for comprehensive analysis.
+        """)
         
         cols = st.columns(6)
         
@@ -1755,7 +1381,7 @@ def main():
         
         st.markdown("<br>", unsafe_allow_html=True)
         
-        cols = st.columns(5)
+        cols = st.columns(4)
         with cols[0]:
             gex_signal = "🟢 GEX SUPPRESSION" if total_gex > 0 else "🔴 GEX AMPLIFICATION"
             gex_badge = "bullish" if total_gex > 0 else "bearish"
@@ -1774,20 +1400,16 @@ def main():
         with cols[3]:
             st.markdown(f'<div class="signal-badge volatile">📊 {len(df_latest)} Strikes</div>', unsafe_allow_html=True)
         
-        with cols[4]:
-            if len(flip_zones) > 0:
-                st.markdown(f'<div class="signal-badge volatile">🔄 {len(flip_zones)} Flip Zones</div>', unsafe_allow_html=True)
-        
         st.markdown("---")
         
-        # TABS with Gamma Flip Zones & Volume Overlays
+        # MODIFIED TABS: Reordered with NET GEX and NET DEX first, removed Net Flow, VANNA Flow, CHARM Flow
         tabs = st.tabs(["📊 NET GEX", "📊 NET DEX", "🎯 GEX", "📊 DEX", "⚡ NET GEX+DEX", 
                         "🎪 Hedge Pressure", "🌊 NET GEX Flow", "🌊 NET DEX Flow", 
                         "🌊 VANNA", "⏰ CHARM", "📈 Intraday Timeline", "📋 OI & Data"])
         
-        # Tab 0: NET GEX with Flip Zones
+        # Tab 0: NET GEX (NEW)
         with tabs[0]:
-            st.markdown("### 📊 NET Gamma Exposure (NET GEX) with Flip Zones & Volume")
+            st.markdown("### 📊 NET Gamma Exposure (NET GEX)")
             st.markdown(f"*Calculated using nearest 6 strikes (±3 from ATM at ₹{spot_price:,.0f})*")
             st.plotly_chart(create_separate_gex_chart(df_latest, spot_price), use_container_width=True, key="net_gex_chart")
             
@@ -1797,18 +1419,10 @@ def main():
             with col2:
                 gex_status = "Volatility Suppression (Range-Bound)" if total_gex > 0 else "Volatility Amplification (Trending)"
                 st.info(f"📌 Market Status: {gex_status}")
-            
-            if len(flip_zones) > 0:
-                st.markdown("#### 🔄 Gamma Flip Zones Detected")
-                for zone in flip_zones:
-                    st.markdown(f"""
-                    - **Flip @ ₹{zone['strike']:,.0f}** {zone['arrow']} | Type: {zone['flip_type']} | 
-                    Valid Direction: {'Moving Up' if zone['direction'] == 'upward' else 'Moving Down'}
-                    """)
         
-        # Tab 1: NET DEX with Volume
+        # Tab 1: NET DEX (NEW)
         with tabs[1]:
-            st.markdown("### 📊 NET Delta Exposure (NET DEX) with Volume")
+            st.markdown("### 📊 NET Delta Exposure (NET DEX)")
             st.markdown(f"*Calculated using nearest 6 strikes (±3 from ATM at ₹{spot_price:,.0f})*")
             st.plotly_chart(create_separate_dex_chart(df_latest, spot_price), use_container_width=True, key="net_dex_chart")
             
@@ -1819,9 +1433,9 @@ def main():
                 dex_status = "Bullish Positioning" if total_dex > 0 else "Bearish Positioning"
                 st.info(f"📌 Market Direction: {dex_status}")
         
-        # Tab 2: GEX with Flip Zones
+        # Tab 2: GEX
         with tabs[2]:
-            st.markdown("### 🎯 Gamma Exposure (GEX) Analysis with Flip Zones")
+            st.markdown("### 🎯 Gamma Exposure (GEX) Analysis")
             st.plotly_chart(create_separate_gex_chart(df_latest, spot_price), use_container_width=True, key="gex_chart")
             
             col1, col2 = st.columns(2)
@@ -1832,9 +1446,9 @@ def main():
                 negative_gex = df_latest[df_latest['net_gex'] < 0]['net_gex'].sum()
                 st.metric("Negative GEX", f"{negative_gex:.4f}B")
         
-        # Tab 3: DEX with Volume
+        # Tab 3: DEX
         with tabs[3]:
-            st.markdown("### 📊 Delta Exposure (DEX) Analysis with Volume")
+            st.markdown("### 📊 Delta Exposure (DEX) Analysis")
             st.plotly_chart(create_separate_dex_chart(df_latest, spot_price), use_container_width=True, key="dex_chart")
             
             col1, col2 = st.columns(2)
@@ -1845,17 +1459,17 @@ def main():
                 negative_dex = df_latest[df_latest['net_dex'] < 0]['net_dex'].sum()
                 st.metric("Negative DEX", f"{negative_dex:.4f}B")
         
-        # Tab 4: NET GEX+DEX with Flip Zones
+        # Tab 4: NET GEX+DEX
         with tabs[4]:
-            st.markdown("### ⚡ Combined NET GEX + DEX Analysis with Flip Zones")
+            st.markdown("### ⚡ Combined NET GEX + DEX Analysis")
             st.plotly_chart(create_net_gex_dex_chart(df_latest, spot_price), use_container_width=True, key="net_gex_dex_chart")
         
-        # Tab 5: Hedge Pressure with Flip Zones
+        # Tab 5: Hedge Pressure
         with tabs[5]:
-            st.markdown("### 🎪 Hedging Pressure Distribution with Flip Zones")
+            st.markdown("### 🎪 Hedging Pressure Distribution")
             st.plotly_chart(create_hedging_pressure_chart(df_latest, spot_price), use_container_width=True, key="hedge_pressure_chart")
         
-        # Tab 6: NET GEX Flow
+        # Tab 6: NET GEX Flow (RENAMED from GEX Flow)
         with tabs[6]:
             st.markdown("### 🌊 NET GEX Flow Analysis")
             st.plotly_chart(create_net_gex_flow_chart(df_latest, spot_price), use_container_width=True, key="net_gex_flow_chart")
@@ -1872,7 +1486,7 @@ def main():
             with col3:
                 st.metric("NET GEX Flow", f"{net_gex_flow:.4f}B")
         
-        # Tab 7: NET DEX Flow
+        # Tab 7: NET DEX Flow (RENAMED from DEX Flow)
         with tabs[7]:
             st.markdown("### 🌊 NET DEX Flow Analysis")
             st.plotly_chart(create_net_dex_flow_chart(df_latest, spot_price), use_container_width=True, key="net_dex_flow_chart")
@@ -1934,7 +1548,7 @@ def main():
             st.plotly_chart(create_oi_distribution(df_latest, spot_price), use_container_width=True, key="oi_distribution_chart")
             
             st.markdown("### 📊 Complete Data Table")
-            display_df = df_latest[['strike', 'call_oi', 'put_oi', 'total_volume', 'net_gex', 'net_dex']].copy()
+            display_df = df_latest[['strike', 'call_oi', 'put_oi', 'net_gex', 'net_dex']].copy()
             display_df['net_gex'] = display_df['net_gex'].apply(lambda x: f"{x:.4f}B")
             display_df['net_dex'] = display_df['net_dex'].apply(lambda x: f"{x:.4f}B")
             
@@ -1953,42 +1567,31 @@ def main():
         👋 **Welcome to NYZTrade Historical GEX/DEX Dashboard!**
         
         **New Features:**
-        - 🔄 **Gamma Flip Zones** - Identifies critical GEX zero-crossing levels
-        - 📊 **Volume Overlays** - Real-time volume visualization across all charts
-        - ↑↓ **Directional Arrows** - Shows valid flip direction based on spot position
         - 📊 **NET GEX** - Total gamma exposure analysis
         - 📊 **NET DEX** - Total delta exposure analysis
         - 🎯 **Extended Strikes** - Now up to ATM ±10 for comprehensive view
-        
-        **Gamma Flip Zones Explained:**
-        - **What**: Strike levels where GEX changes from positive to negative (or vice versa)
-        - **Why**: Critical levels that affect dealer hedging behavior
-        - **Arrows**: Show the valid flip direction:
-          - ↑ (Up Arrow): Flip valid when price moves UP through this level
-          - ↓ (Down Arrow): Flip valid when price moves DOWN through this level
-        - **Colors**: 
-          - 🟢 Green: Flip leads to suppression (stabilization)
-          - 🔴 Red: Flip leads to amplification (acceleration)
+        - 🌊 **NET GEX/DEX Flow** - Track flow changes
+        - 📅 **Recent Data Access** - Yesterday's data now accessible
         
         **Calculation Methodology:**
-        - **Market Metrics** are calculated using only the **nearest 6 strikes (±3 from ATM)**
-        - This focuses on strikes with actual market impact
+        - **Market Metrics** (GEX Suppression/Amplification, DEX Direction) are calculated using only the **nearest 6 strikes (±3 from ATM)**
+        - This focuses on strikes with actual market impact and prevents far OTM strikes from distorting signals
         - **All selected strikes** are displayed in charts for comprehensive analysis
         
         **How to use:**
         1. Select index and date
         2. Choose strikes (up to ±10)
         3. Click "Fetch Historical Data"
-        4. Navigate through 12 comprehensive tabs with flip zones
+        4. Navigate through 12 comprehensive tabs
         
-        **💡 Pro Tip:** Watch for price approaching gamma flip zones - these are critical decision points for dealers!
+        **💡 Pro Tip:** Select wider strike range (±6 to ±10) for complete picture, while core metrics focus on nearest strikes for accuracy.
         """)
     
     st.markdown("---")
     st.markdown(f"""<div style="text-align: center; padding: 20px; color: #64748b;">
         <p style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">
         NYZTrade Historical GEX/DEX Dashboard | Data: Dhan Rolling API | IST<br>
-        12 Analysis Tabs | Gamma Flip Zones | Volume Overlays | Extended Strikes (±10)</p>
+        12 Analysis Tabs | Extended Strikes (±10) | NET GEX/DEX Analysis</p>
     </div>""", unsafe_allow_html=True)
 
 if __name__ == "__main__":

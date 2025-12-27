@@ -1,6 +1,6 @@
 # ============================================================================
-# NYZTrade Historical GEX/DEX Dashboard - FINAL VERSION WITH GAMMA FLIP ZONES
-# All modifications applied as requested + Gamma Flip Zones with Volume
+# NYZTrade Historical GEX/DEX Dashboard - FIXED VERSION
+# Gamma Flip Zones + Volume Overlays + Bug Fix
 # ============================================================================
 
 import streamlit as st
@@ -706,7 +706,7 @@ def create_net_dex_flow_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
     return fig
 
 def create_separate_gex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
-    """GEX chart with gamma flip zones and volume overlay"""
+    """GEX chart with gamma flip zones and volume overlay - FIXED"""
     df_sorted = df.sort_values('strike').reset_index(drop=True)
     colors = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['net_gex']]
     
@@ -739,9 +739,7 @@ def create_separate_gex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
             line=dict(color='rgba(245, 158, 11, 0.6)', width=2),
             marker=dict(size=6, color='rgba(245, 158, 11, 0.8)'),
             name='Total Volume',
-            hovertemplate='Strike: %{y:,.0f}<br>Volume: %{x:,.0f}<extra></extra>',
-            yaxis='y',
-            xaxis='x2'
+            hovertemplate='Strike: %{y:,.0f}<br>Volume: %{x:,.0f}<extra></extra>'
         ),
         secondary_y=True
     )
@@ -808,30 +806,30 @@ def create_separate_gex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
         margin=dict(l=80, r=80, t=100, b=80)
     )
     
-    # Update axes
+    # FIXED: Update axes correctly for secondary_y
     fig.update_xaxes(
         title_text="GEX (₹ Billions)", 
         gridcolor='rgba(128,128,128,0.2)', 
-        showgrid=True,
-        secondary_y=False
-    )
-    fig.update_xaxes(
-        title_text="Volume",
-        gridcolor='rgba(128,128,128,0.1)',
-        showgrid=False,
-        secondary_y=True
+        showgrid=True
     )
     fig.update_yaxes(
         title_text="Strike Price", 
         gridcolor='rgba(128,128,128,0.2)', 
         showgrid=True, 
-        autorange=True
+        autorange=True,
+        secondary_y=False
+    )
+    fig.update_yaxes(
+        title_text="Volume",
+        gridcolor='rgba(128,128,128,0.1)',
+        showgrid=False,
+        secondary_y=True
     )
     
     return fig
 
 def create_separate_dex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
-    """DEX chart with volume overlay"""
+    """DEX chart with volume overlay - FIXED"""
     df_sorted = df.sort_values('strike').reset_index(drop=True)
     colors = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['net_dex']]
     
@@ -861,9 +859,7 @@ def create_separate_dex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
             line=dict(color='rgba(245, 158, 11, 0.6)', width=2),
             marker=dict(size=6, color='rgba(245, 158, 11, 0.8)'),
             name='Total Volume',
-            hovertemplate='Strike: %{y:,.0f}<br>Volume: %{x:,.0f}<extra></extra>',
-            yaxis='y',
-            xaxis='x2'
+            hovertemplate='Strike: %{y:,.0f}<br>Volume: %{x:,.0f}<extra></extra>'
         ),
         secondary_y=True
     )
@@ -900,30 +896,30 @@ def create_separate_dex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
         margin=dict(l=80, r=80, t=100, b=80)
     )
     
-    # Update axes
+    # FIXED: Update axes correctly for secondary_y
     fig.update_xaxes(
         title_text="DEX (₹ Billions)", 
         gridcolor='rgba(128,128,128,0.2)', 
-        showgrid=True,
-        secondary_y=False
-    )
-    fig.update_xaxes(
-        title_text="Volume",
-        gridcolor='rgba(128,128,128,0.1)',
-        showgrid=False,
-        secondary_y=True
+        showgrid=True
     )
     fig.update_yaxes(
         title_text="Strike Price", 
         gridcolor='rgba(128,128,128,0.2)', 
         showgrid=True, 
-        autorange=True
+        autorange=True,
+        secondary_y=False
+    )
+    fig.update_yaxes(
+        title_text="Volume",
+        gridcolor='rgba(128,128,128,0.1)',
+        showgrid=False,
+        secondary_y=True
     )
     
     return fig
 
 def create_net_gex_dex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
-    """Combined NET GEX+DEX chart with gamma flip zones and volume overlay"""
+    """Combined NET GEX+DEX chart with gamma flip zones and volume overlay - FIXED"""
     df_sorted = df.sort_values('strike').reset_index(drop=True)
     df_sorted['net_gex_dex'] = df_sorted['net_gex'] + df_sorted['net_dex']
     colors = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['net_gex_dex']]
@@ -957,9 +953,7 @@ def create_net_gex_dex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
             line=dict(color='rgba(245, 158, 11, 0.6)', width=2),
             marker=dict(size=6, color='rgba(245, 158, 11, 0.8)'),
             name='Total Volume',
-            hovertemplate='Strike: %{y:,.0f}<br>Volume: %{x:,.0f}<extra></extra>',
-            yaxis='y',
-            xaxis='x2'
+            hovertemplate='Strike: %{y:,.0f}<br>Volume: %{x:,.0f}<extra></extra>'
         ),
         secondary_y=True
     )
@@ -1024,30 +1018,30 @@ def create_net_gex_dex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
         margin=dict(l=80, r=80, t=100, b=80)
     )
     
-    # Update axes
+    # FIXED: Update axes correctly for secondary_y
     fig.update_xaxes(
         title_text="Combined Exposure (₹ Billions)", 
         gridcolor='rgba(128,128,128,0.2)', 
-        showgrid=True,
-        secondary_y=False
-    )
-    fig.update_xaxes(
-        title_text="Volume",
-        gridcolor='rgba(128,128,128,0.1)',
-        showgrid=False,
-        secondary_y=True
+        showgrid=True
     )
     fig.update_yaxes(
         title_text="Strike Price", 
         gridcolor='rgba(128,128,128,0.2)', 
         showgrid=True, 
-        autorange=True
+        autorange=True,
+        secondary_y=False
+    )
+    fig.update_yaxes(
+        title_text="Volume",
+        gridcolor='rgba(128,128,128,0.1)',
+        showgrid=False,
+        secondary_y=True
     )
     
     return fig
 
 def create_hedging_pressure_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
-    """Hedging pressure chart with gamma flip zones and volume overlay"""
+    """Hedging pressure chart with gamma flip zones and volume overlay - FIXED"""
     df_sorted = df.sort_values('strike').reset_index(drop=True)
     
     # Identify gamma flip zones
@@ -1092,9 +1086,7 @@ def create_hedging_pressure_chart(df: pd.DataFrame, spot_price: float) -> go.Fig
             line=dict(color='rgba(245, 158, 11, 0.6)', width=2),
             marker=dict(size=6, color='rgba(245, 158, 11, 0.8)'),
             name='Total Volume',
-            hovertemplate='Strike: %{y:,.0f}<br>Volume: %{x:,.0f}<extra></extra>',
-            yaxis='y',
-            xaxis='x2'
+            hovertemplate='Strike: %{y:,.0f}<br>Volume: %{x:,.0f}<extra></extra>'
         ),
         secondary_y=True
     )
@@ -1162,7 +1154,7 @@ def create_hedging_pressure_chart(df: pd.DataFrame, spot_price: float) -> go.Fig
         margin=dict(l=80, r=120, t=100, b=80)
     )
     
-    # Update axes
+    # FIXED: Update axes correctly for secondary_y
     fig.update_xaxes(
         title_text="Hedging Pressure (%)", 
         gridcolor='rgba(128,128,128,0.2)', 
@@ -1170,20 +1162,20 @@ def create_hedging_pressure_chart(df: pd.DataFrame, spot_price: float) -> go.Fig
         zeroline=True,
         zerolinecolor='rgba(128,128,128,0.5)',
         zerolinewidth=2,
-        range=[-110, 110],
-        secondary_y=False
-    )
-    fig.update_xaxes(
-        title_text="Volume",
-        gridcolor='rgba(128,128,128,0.1)',
-        showgrid=False,
-        secondary_y=True
+        range=[-110, 110]
     )
     fig.update_yaxes(
         title_text="Strike Price", 
         gridcolor='rgba(128,128,128,0.2)', 
         showgrid=True, 
-        autorange=True
+        autorange=True,
+        secondary_y=False
+    )
+    fig.update_yaxes(
+        title_text="Volume",
+        gridcolor='rgba(128,128,128,0.1)',
+        showgrid=False,
+        secondary_y=True
     )
     
     return fig

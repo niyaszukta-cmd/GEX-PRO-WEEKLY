@@ -33,6 +33,23 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
     
+    /* Hide GitHub link */
+    header[data-testid="stHeader"] a[href*="github"] {
+        display: none !important;
+    }
+    
+    /* Hide the GitHub icon in toolbar */
+    button[kind="header"][data-testid="baseButton-header"] svg {
+        display: none !important;
+    }
+    
+    /* Alternative: Hide all GitHub related elements */
+    a[aria-label*="GitHub"],
+    a[aria-label*="github"],
+    a[href*="github.com"] {
+        display: none !important;
+    }
+    
     :root {
         --bg-primary: #0a0e17;
         --bg-secondary: #111827;

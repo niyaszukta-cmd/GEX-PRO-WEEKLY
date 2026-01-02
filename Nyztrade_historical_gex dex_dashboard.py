@@ -204,7 +204,7 @@ DHAN_SECURITY_IDS = {
     "BANKNIFTY": 25,
     "FINNIFTY": 27,
     "MIDCPNIFTY": 442,
-    "SENSEX": 51
+    "SENSEX": 51,
 }
 
 SYMBOL_CONFIG = {
@@ -215,8 +215,7 @@ SYMBOL_CONFIG = {
     "SENSEX": {"contract_size": 10, "strike_interval": 100},
 }
 
-IST = pytz.timezone('Asia/Kolkata')
-
+IST = pytz.timezone("Asia/Kolkata")
 # ============================================================================
 # BLACK-SCHOLES CALCULATOR
 # ============================================================================

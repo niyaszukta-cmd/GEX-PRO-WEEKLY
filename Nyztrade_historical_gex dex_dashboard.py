@@ -1,6 +1,6 @@
 # ============================================================================
-# NYZTrade Historical GEX/DEX Dashboard - WITH GAMMA FLIP ZONES ONLY
-# Original code + Gamma Flip Zones (NO volume overlays, NO other changes)
+# NYZTrade Historical GEX/DEX Dashboard - WITH GAMMA FLIP ZONES + STOCK OPTIONS
+# Original code + Gamma Flip Zones + Stock Options for Most Liquid Stocks
 # ============================================================================
 
 import streamlit as st
@@ -197,10 +197,10 @@ st.markdown("""
 @dataclass
 class DhanConfig:
     client_id: str = "1100480354"
-    access_token: str = 
-   "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY3NTMwNzY0LCJhcHBfaWQiOiJlZDMwMzI5NCIsImlhdCI6MTc2NzQ0NDM2NCwidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.j5Z4d36RgI_-OddmCuPQlnoZyEBt5dBp4B5bmmJxz5wJToVAFnb4Hgeka381I1pkLy4qU3yDdhMeJCshVVwT0Q"
+    access_token: str = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY3NTMwNzY0LCJhcHBfaWQiOiJlZDMwMzI5NCIsImlhdCI6MTc2NzQ0NDM2NCwidG9rZW5Db25zdW1lclR5cGUiOiJBUFAiLCJ3ZWJob29rVXJsIjoiIiwiZGhhbkNsaWVudElkIjoiMTEwMDQ4MDM1NCJ9.j5Z4d36RgI_-OddmCuPQlnoZyEBt5dBp4B5bmmJxz5wJToVAFnb4Hgeka381I1pkLy4qU3yDdhMeJCshVVwT0Q"
 
-DHAN_SECURITY_IDS = {
+# INDEX OPTIONS
+DHAN_INDEX_IDS = {
     "NIFTY": 13,
     "BANKNIFTY": 25,
     "FINNIFTY": 27,
@@ -208,13 +208,58 @@ DHAN_SECURITY_IDS = {
     "SENSEX": 51,
 }
 
-SYMBOL_CONFIG = {
-    "NIFTY": {"contract_size": 25, "strike_interval": 50},
-    "BANKNIFTY": {"contract_size": 15, "strike_interval": 100},
-    "FINNIFTY": {"contract_size": 40, "strike_interval": 50},
-    "MIDCPNIFTY": {"contract_size": 75, "strike_interval": 25},
-    "SENSEX": {"contract_size": 10, "strike_interval": 100},
+# STOCK OPTIONS - MOST LIQUID STOCKS
+DHAN_STOCK_IDS = {
+    "RELIANCE": 2885,
+    "TCS": 3506,
+    "INFY": 1594,
+    "HDFCBANK": 1333,
+    "ICICIBANK": 1330,
+    "SBIN": 3045,
+    "BHARTIARTL": 14,
+    "ITC": 1660,
+    "KOTAKBANK": 1922,
+    "AXISBANK": 5,
+    "LT": 2136,
+    "TATAMOTORS": 3456,
+    "WIPRO": 3787,
+    "HINDUNILVR": 1394,
+    "BAJFINANCE": 16,
 }
+
+# Combined for easy lookup
+DHAN_SECURITY_IDS = {**DHAN_INDEX_IDS, **DHAN_STOCK_IDS}
+
+# INDEX CONFIGURATION
+INDEX_CONFIG = {
+    "NIFTY": {"contract_size": 25, "strike_interval": 50, "type": "INDEX"},
+    "BANKNIFTY": {"contract_size": 15, "strike_interval": 100, "type": "INDEX"},
+    "FINNIFTY": {"contract_size": 40, "strike_interval": 50, "type": "INDEX"},
+    "MIDCPNIFTY": {"contract_size": 75, "strike_interval": 25, "type": "INDEX"},
+    "SENSEX": {"contract_size": 10, "strike_interval": 100, "type": "INDEX"},
+}
+
+# STOCK CONFIGURATION (Lot sizes as per NSE)
+STOCK_CONFIG = {
+    "RELIANCE": {"contract_size": 250, "strike_interval": 10, "type": "STOCK"},
+    "TCS": {"contract_size": 150, "strike_interval": 25, "type": "STOCK"},
+    "INFY": {"contract_size": 300, "strike_interval": 10, "type": "STOCK"},
+    "HDFCBANK": {"contract_size": 550, "strike_interval": 10, "type": "STOCK"},
+    "ICICIBANK": {"contract_size": 700, "strike_interval": 5, "type": "STOCK"},
+    "SBIN": {"contract_size": 1500, "strike_interval": 5, "type": "STOCK"},
+    "BHARTIARTL": {"contract_size": 550, "strike_interval": 10, "type": "STOCK"},
+    "ITC": {"contract_size": 1600, "strike_interval": 5, "type": "STOCK"},
+    "KOTAKBANK": {"contract_size": 400, "strike_interval": 10, "type": "STOCK"},
+    "AXISBANK": {"contract_size": 650, "strike_interval": 10, "type": "STOCK"},
+    "LT": {"contract_size": 300, "strike_interval": 25, "type": "STOCK"},
+    "TATAMOTORS": {"contract_size": 1200, "strike_interval": 5, "type": "STOCK"},
+    "WIPRO": {"contract_size": 1200, "strike_interval": 5, "type": "STOCK"},
+    "HINDUNILVR": {"contract_size": 300, "strike_interval": 25, "type": "STOCK"},
+    "BAJFINANCE": {"contract_size": 125, "strike_interval": 50, "type": "STOCK"},
+}
+
+# Combined configuration
+SYMBOL_CONFIG = {**INDEX_CONFIG, **STOCK_CONFIG}
 
 IST = pytz.timezone("Asia/Kolkata")
 
@@ -291,7 +336,7 @@ class BlackScholesCalculator:
             return 0
 
 # ============================================================================
-# GAMMA FLIP ZONE CALCULATOR - NEW ADDITION
+# GAMMA FLIP ZONE CALCULATOR
 # ============================================================================
 
 def identify_gamma_flip_zones(df: pd.DataFrame, spot_price: float) -> List[Dict]:
@@ -372,11 +417,15 @@ class DhanHistoricalFetcher:
         try:
             security_id = DHAN_SECURITY_IDS.get(symbol, 13)
             
+            # Determine instrument type
+            symbol_config = SYMBOL_CONFIG.get(symbol, SYMBOL_CONFIG["NIFTY"])
+            instrument = "OPTIDX" if symbol_config["type"] == "INDEX" else "OPTSTK"
+            
             payload = {
                 "exchangeSegment": "NSE_FNO",
                 "interval": interval,
                 "securityId": security_id,
-                "instrument": "OPTIDX",
+                "instrument": instrument,
                 "expiryFlag": expiry_flag,
                 "expiryCode": expiry_code,
                 "strike": strike_type,
@@ -411,6 +460,7 @@ class DhanHistoricalFetcher:
         
         config = SYMBOL_CONFIG.get(symbol, SYMBOL_CONFIG["NIFTY"])
         contract_size = config["contract_size"]
+        symbol_type = config["type"]
         
         all_data = []
         progress_bar = st.progress(0)
@@ -555,6 +605,7 @@ class DhanHistoricalFetcher:
         
         meta = {
             'symbol': symbol,
+            'symbol_type': symbol_type,
             'date': target_date,
             'spot_price': latest['spot_price'],
             'spot_price_min': spot_prices.min(),
@@ -571,7 +622,7 @@ class DhanHistoricalFetcher:
         return df, meta
 
 # ============================================================================
-# CHART FUNCTIONS - ORIGINAL WITH GAMMA FLIP ZONES ADDED
+# CHART FUNCTIONS (ALL ORIGINAL WITH GAMMA FLIP ZONES)
 # ============================================================================
 
 def create_intraday_timeline(df: pd.DataFrame, selected_timestamp) -> go.Figure:
@@ -731,7 +782,6 @@ def create_separate_gex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
     df_sorted = df.sort_values('strike').reset_index(drop=True)
     colors = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['net_gex']]
     
-    # NEW: Identify gamma flip zones
     flip_zones = identify_gamma_flip_zones(df_sorted, spot_price)
     
     fig = go.Figure()
@@ -750,9 +800,7 @@ def create_separate_gex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
                   annotation_text=f"Spot: {spot_price:,.2f}", annotation_position="top right",
                   annotation=dict(font=dict(size=12, color="white")))
     
-    # NEW: Add gamma flip zones
     for zone in flip_zones:
-        # Add horizontal line at flip zone
         fig.add_hline(
             y=zone['strike'],
             line_dash="dot",
@@ -768,7 +816,6 @@ def create_separate_gex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
             )
         )
         
-        # Add shaded region around flip zone
         fig.add_hrect(
             y0=zone['lower_strike'],
             y1=zone['upper_strike'],
@@ -798,7 +845,7 @@ def create_separate_gex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
     return fig
 
 def create_separate_dex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
-    """DEX chart - ORIGINAL"""
+    """DEX chart"""
     df_sorted = df.sort_values('strike').reset_index(drop=True)
     colors = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['net_dex']]
     
@@ -836,12 +883,11 @@ def create_separate_dex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
     return fig
 
 def create_net_gex_dex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
-    """NET GEX+DEX chart - WITH GAMMA FLIP ZONES ADDED"""
+    """NET GEX+DEX chart - WITH GAMMA FLIP ZONES"""
     df_sorted = df.sort_values('strike').reset_index(drop=True)
     df_sorted['net_gex_dex'] = df_sorted['net_gex'] + df_sorted['net_dex']
     colors = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['net_gex_dex']]
     
-    # NEW: Identify gamma flip zones
     flip_zones = identify_gamma_flip_zones(df_sorted, spot_price)
     
     fig = go.Figure()
@@ -860,7 +906,6 @@ def create_net_gex_dex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
                   annotation_text=f"Spot: {spot_price:,.2f}", annotation_position="top right",
                   annotation=dict(font=dict(size=12, color="white")))
     
-    # NEW: Add gamma flip zones
     for zone in flip_zones:
         fig.add_hline(
             y=zone['strike'],
@@ -906,10 +951,9 @@ def create_net_gex_dex_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
     return fig
 
 def create_hedging_pressure_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
-    """Hedging pressure chart - WITH GAMMA FLIP ZONES ADDED"""
+    """Hedging pressure chart - WITH GAMMA FLIP ZONES"""
     df_sorted = df.sort_values('strike').reset_index(drop=True)
     
-    # NEW: Identify gamma flip zones
     flip_zones = identify_gamma_flip_zones(df_sorted, spot_price)
     
     fig = go.Figure()
@@ -942,7 +986,6 @@ def create_hedging_pressure_chart(df: pd.DataFrame, spot_price: float) -> go.Fig
     
     fig.add_vline(x=0, line_dash="dot", line_color="gray", line_width=1)
     
-    # NEW: Add gamma flip zones
     for zone in flip_zones:
         fig.add_hline(
             y=zone['strike'],
@@ -995,7 +1038,7 @@ def create_hedging_pressure_chart(df: pd.DataFrame, spot_price: float) -> go.Fig
     return fig
 
 def create_oi_distribution(df: pd.DataFrame, spot_price: float) -> go.Figure:
-    """OI Distribution - ORIGINAL"""
+    """OI Distribution"""
     df_sorted = df.sort_values('strike').reset_index(drop=True)
     
     fig = go.Figure()
@@ -1052,7 +1095,7 @@ def create_oi_distribution(df: pd.DataFrame, spot_price: float) -> go.Figure:
     return fig
 
 def create_vanna_exposure_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
-    """VANNA Exposure - ORIGINAL"""
+    """VANNA Exposure"""
     df_sorted = df.sort_values('strike').reset_index(drop=True)
     
     colors_call = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['call_vanna']]
@@ -1104,7 +1147,7 @@ def create_vanna_exposure_chart(df: pd.DataFrame, spot_price: float) -> go.Figur
     return fig
 
 def create_charm_exposure_chart(df: pd.DataFrame, spot_price: float) -> go.Figure:
-    """CHARM Exposure - ORIGINAL"""
+    """CHARM Exposure"""
     df_sorted = df.sort_values('strike').reset_index(drop=True)
     
     colors_call = ['#10b981' if x > 0 else '#ef4444' for x in df_sorted['call_charm']]
@@ -1156,7 +1199,7 @@ def create_charm_exposure_chart(df: pd.DataFrame, spot_price: float) -> go.Figur
     return fig
 
 # ============================================================================
-# MAIN APPLICATION - ORIGINAL WITH FLIP ZONE INFO ADDED
+# MAIN APPLICATION
 # ============================================================================
 
 def main():
@@ -1165,7 +1208,7 @@ def main():
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div>
                 <h1 class="main-title">📊 NYZTrade Historical GEX/DEX Dashboard</h1>
-                <p class="sub-title">Historical Options Greeks Analysis | Gamma Flip Zones | Dhan Rolling API | Indian Standard Time</p>
+                <p class="sub-title">Historical Options Greeks Analysis | Indices + Stocks | Gamma Flip Zones | Dhan Rolling API | IST</p>
             </div>
             <div class="history-indicator">
                 <div class="history-dot"></div>
@@ -1178,11 +1221,34 @@ def main():
     with st.sidebar:
         st.markdown("### ⚙️ Configuration")
         
-        symbol = st.selectbox(
-            "📈 Select Index",
-            options=list(DHAN_SECURITY_IDS.keys()),
-            index=0
+        # NEW: Option Type Selection
+        option_type = st.radio(
+            "📊 Option Type",
+            options=["Index Options", "Stock Options"],
+            index=0,
+            horizontal=True
         )
+        
+        st.markdown("---")
+        
+        # Symbol Selection based on type
+        if option_type == "Index Options":
+            symbol = st.selectbox(
+                "📈 Select Index",
+                options=list(DHAN_INDEX_IDS.keys()),
+                index=0
+            )
+        else:
+            symbol = st.selectbox(
+                "📈 Select Stock",
+                options=list(DHAN_STOCK_IDS.keys()),
+                index=0
+            )
+            
+            # Show lot size info for stocks
+            if symbol in STOCK_CONFIG:
+                lot_size = STOCK_CONFIG[symbol]["contract_size"]
+                st.info(f"💼 Lot Size: {lot_size:,} shares")
         
         st.markdown("---")
         st.markdown("### 📅 Historical Date Selection")
@@ -1337,7 +1403,8 @@ def main():
             'strikes': strikes,
             'interval': interval,
             'expiry_code': expiry_code,
-            'expiry_flag': expiry_flag
+            'expiry_flag': expiry_flag,
+            'option_type': option_type
         }
         st.session_state.data_fetched = False
     
@@ -1350,17 +1417,19 @@ def main():
             interval = config['interval']
             expiry_code = config.get('expiry_code', 1)
             expiry_flag = config.get('expiry_flag', 'WEEK')
+            option_type = config.get('option_type', 'Index Options')
         
         if not strikes:
             st.error("❌ Please select at least one strike")
             return
         
         if not st.session_state.get('data_fetched', False) or 'df_data' not in st.session_state:
+            symbol_type = "Index" if option_type == "Index Options" else "Stock"
             st.markdown(f"""
             <div class="metric-card neutral" style="margin: 20px 0;">
                 <div class="metric-label">Fetching Historical Data</div>
                 <div class="metric-value" style="color: #3b82f6; font-size: 1.2rem;">
-                    {symbol} | {target_date} | {interval} min | Strikes: {', '.join(strikes[:3])}...
+                    {symbol_type}: {symbol} | {target_date} | {interval} min | Strikes: {', '.join(strikes[:3])}...
                 </div>
                 <div class="metric-delta">This may take 1-3 minutes...</div>
             </div>
@@ -1389,7 +1458,10 @@ def main():
         
         all_timestamps = sorted(df['timestamp'].unique())
         
-        st.success(f"✅ Data fetched successfully! Total records: {len(df):,} | Strikes: {meta['strikes_count']}")
+        symbol_type = meta.get('symbol_type', 'INDEX')
+        symbol_label = "Index" if symbol_type == "INDEX" else "Stock"
+        
+        st.success(f"✅ Data fetched successfully! {symbol_label}: {meta['symbol']} | Total records: {len(df):,} | Strikes: {meta['strikes_count']}")
         
         st.markdown("---")
         st.markdown("### ⏱️ Time Navigation")
@@ -1501,12 +1573,12 @@ def main():
         total_put_oi = df_calc['put_oi'].sum()
         pcr = total_put_oi / total_call_oi if total_call_oi > 0 else 1
         
-        # NEW: Identify gamma flip zones
+        # Identify gamma flip zones
         flip_zones = identify_gamma_flip_zones(df_latest, spot_price)
         
         st.markdown("### 📊 Historical Data Overview")
         
-        # NEW: Info about flip zones if detected
+        # Info about flip zones if detected
         if len(flip_zones) > 0:
             flip_info = " | ".join([f"🔄 Flip @ ₹{z['strike']:,.0f} {z['arrow']}" for z in flip_zones[:3]])
             st.info(f"""
@@ -1526,9 +1598,9 @@ def main():
         
         with cols[0]:
             st.markdown(f"""<div class="metric-card neutral">
-                <div class="metric-label">Date</div>
-                <div class="metric-value" style="font-size: 1.2rem;">{target_date}</div>
-                <div class="metric-delta">{selected_timestamp.strftime('%H:%M:%S IST')}</div>
+                <div class="metric-label">{symbol_label}</div>
+                <div class="metric-value" style="font-size: 1.2rem;">{symbol}</div>
+                <div class="metric-delta">{target_date}</div>
             </div>""", unsafe_allow_html=True)
         
         with cols[1]:
@@ -1592,18 +1664,16 @@ def main():
             st.markdown(f'<div class="signal-badge volatile">📊 {len(df_latest)} Strikes</div>', unsafe_allow_html=True)
         
         with cols[4]:
-            # NEW: Show flip zones badge
             if len(flip_zones) > 0:
                 st.markdown(f'<div class="signal-badge volatile">🔄 {len(flip_zones)} Flip Zones</div>', unsafe_allow_html=True)
         
         st.markdown("---")
         
-        # TABS - ORIGINAL
+        # TABS
         tabs = st.tabs(["📊 NET GEX", "📊 NET DEX", "🎯 GEX", "📊 DEX", "⚡ NET GEX+DEX", 
                         "🎪 Hedge Pressure", "🌊 NET GEX Flow", "🌊 NET DEX Flow", 
                         "🌊 VANNA", "⏰ CHARM", "📈 Intraday Timeline", "📋 OI & Data"])
         
-        # Tab 0: NET GEX with Flip Zones
         with tabs[0]:
             st.markdown("### 📊 NET Gamma Exposure (NET GEX) with Flip Zones")
             st.markdown(f"*Calculated using nearest 6 strikes (±3 from ATM at ₹{spot_price:,.0f})*")
@@ -1616,7 +1686,6 @@ def main():
                 gex_status = "Volatility Suppression (Range-Bound)" if total_gex > 0 else "Volatility Amplification (Trending)"
                 st.info(f"📌 Market Status: {gex_status}")
             
-            # NEW: Show flip zone details
             if len(flip_zones) > 0:
                 st.markdown("#### 🔄 Gamma Flip Zones Detected")
                 for zone in flip_zones:
@@ -1625,7 +1694,6 @@ def main():
                     Valid Direction: {'Moving Up' if zone['direction'] == 'upward' else 'Moving Down'}
                     """)
         
-        # Tab 1: NET DEX (ORIGINAL)
         with tabs[1]:
             st.markdown("### 📊 NET Delta Exposure (NET DEX)")
             st.markdown(f"*Calculated using nearest 6 strikes (±3 from ATM at ₹{spot_price:,.0f})*")
@@ -1638,7 +1706,6 @@ def main():
                 dex_status = "Bullish Positioning" if total_dex > 0 else "Bearish Positioning"
                 st.info(f"📌 Market Direction: {dex_status}")
         
-        # Tab 2: GEX with Flip Zones
         with tabs[2]:
             st.markdown("### 🎯 Gamma Exposure (GEX) Analysis with Flip Zones")
             st.plotly_chart(create_separate_gex_chart(df_latest, spot_price), use_container_width=True, key="gex_chart")
@@ -1651,7 +1718,6 @@ def main():
                 negative_gex = df_latest[df_latest['net_gex'] < 0]['net_gex'].sum()
                 st.metric("Negative GEX", f"{negative_gex:.4f}B")
         
-        # Tab 3: DEX (ORIGINAL)
         with tabs[3]:
             st.markdown("### 📊 Delta Exposure (DEX) Analysis")
             st.plotly_chart(create_separate_dex_chart(df_latest, spot_price), use_container_width=True, key="dex_chart")
@@ -1664,17 +1730,14 @@ def main():
                 negative_dex = df_latest[df_latest['net_dex'] < 0]['net_dex'].sum()
                 st.metric("Negative DEX", f"{negative_dex:.4f}B")
         
-        # Tab 4: NET GEX+DEX with Flip Zones
         with tabs[4]:
             st.markdown("### ⚡ Combined NET GEX + DEX Analysis with Flip Zones")
             st.plotly_chart(create_net_gex_dex_chart(df_latest, spot_price), use_container_width=True, key="net_gex_dex_chart")
         
-        # Tab 5: Hedge Pressure with Flip Zones
         with tabs[5]:
             st.markdown("### 🎪 Hedging Pressure Distribution with Flip Zones")
             st.plotly_chart(create_hedging_pressure_chart(df_latest, spot_price), use_container_width=True, key="hedge_pressure_chart")
         
-        # Tab 6-11: ORIGINAL TABS
         with tabs[6]:
             st.markdown("### 🌊 NET GEX Flow Analysis")
             st.plotly_chart(create_net_gex_flow_chart(df_latest, spot_price), use_container_width=True, key="net_gex_flow_chart")
@@ -1766,8 +1829,10 @@ def main():
         st.info("""
         👋 **Welcome to NYZTrade Historical GEX/DEX Dashboard!**
         
-        **New Feature:**
-        - 🔄 **Gamma Flip Zones** - Identifies critical GEX zero-crossing levels with directional arrows
+        **NEW: Stock Options Support!**
+        - 📈 **15 Most Liquid Stocks** including RELIANCE, TCS, INFY, HDFCBANK, ICICIBANK, SBIN, and more
+        - 🔄 **Gamma Flip Zones** - Critical GEX zero-crossing levels with directional arrows
+        - 📊 **Index + Stock Options** - Complete Greeks analysis for both asset classes
         
         **Gamma Flip Zones Explained:**
         - **What**: Strike levels where GEX changes from positive to negative (or vice versa)
@@ -1780,19 +1845,26 @@ def main():
           - 🔴 Red: Flip leads to amplification (acceleration)
         
         **How to use:**
-        1. Select index and date
-        2. Choose strikes (up to ±10)
-        3. Click "Fetch Historical Data"
-        4. Navigate through 12 comprehensive tabs
+        1. Choose **Index Options** or **Stock Options**
+        2. Select your symbol and date
+        3. Choose strikes (up to ±10)
+        4. Click "Fetch Historical Data"
+        5. Navigate through 12 comprehensive tabs
         
-        **💡 Pro Tip:** Watch for price approaching gamma flip zones - these are critical decision points for dealers!
+        **💼 Stock Options Features:**
+        - Accurate lot sizes for each stock
+        - Appropriate strike intervals based on stock price
+        - Same advanced Greeks analysis as indices
+        - Gamma flip zones for stocks too!
+        
+        **💡 Pro Tip:** Watch for price approaching gamma flip zones in stocks - these are critical decision points for institutional dealers!
         """)
     
     st.markdown("---")
     st.markdown(f"""<div style="text-align: center; padding: 20px; color: #64748b;">
         <p style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;">
-        NYZTrade Historical GEX/DEX Dashboard | Data: Dhan Rolling API | IST<br>
-        12 Analysis Tabs | Gamma Flip Zones | Extended Strikes (±10)</p>
+        NYZTrade Historical GEX/DEX Dashboard | Indices + Stocks | Data: Dhan Rolling API | IST<br>
+        12 Analysis Tabs | Gamma Flip Zones | Extended Strikes (±10) | 15 Liquid Stocks</p>
     </div>""", unsafe_allow_html=True)
 
 if __name__ == "__main__":
